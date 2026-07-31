@@ -1,0 +1,52 @@
+:root { color-scheme: dark; font-family: Inter, "Segoe UI", system-ui, sans-serif; background:#11151c; color:#e7eef8; }
+* { box-sizing: border-box; }
+body { margin:0; }
+button, .button, select, textarea { font: inherit; }
+.app { display:grid; grid-template-columns:280px 1fr; min-height:100vh; }
+aside { position:sticky; top:0; height:100vh; padding:24px; background:#0b0f14; border-right:1px solid #263242; }
+.brand { display:flex; gap:12px; align-items:center; margin-bottom:32px; }
+h1, h2, p { margin:0; }
+h1 { font-size:18px; }
+.brand span, .sectionHead p, small { color:#91a0b5; }
+nav { display:grid; gap:8px; }
+nav a, .button, button { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid #314054; color:#dce7f7; background:#17202b; padding:10px 12px; border-radius:6px; text-decoration:none; cursor:pointer; min-height:40px; }
+button:disabled { opacity:.45; cursor:not-allowed; }
+.primary { background:#2c6bed; border-color:#4b82f0; color:white; }
+.statusBox { margin-top:28px; padding:14px; background:#111821; border:1px solid #263242; border-radius:8px; display:grid; gap:6px; }
+main { padding:24px; display:grid; gap:22px; }
+.band { border-bottom:1px solid #263242; padding-bottom:22px; }
+.sectionHead { display:flex; align-items:end; justify-content:space-between; gap:16px; margin-bottom:16px; }
+h2 { font-size:22px; letter-spacing:0; }
+.workgrid, .resultGrid { display:grid; grid-template-columns:minmax(320px,1fr) minmax(320px,1fr); gap:16px; }
+.panel { background:#141c26; border:1px solid #2b394a; border-radius:8px; padding:16px; }
+.uploader input { display:none; }
+.uploader label { min-height:180px; display:grid; place-items:center; align-content:center; gap:10px; border:1px dashed #516078; border-radius:8px; color:#b8c5d8; cursor:pointer; }
+.preview { width:100%; max-height:360px; object-fit:contain; margin:14px 0; background:#090c10; border-radius:6px; }
+textarea { width:100%; min-height:120px; resize:vertical; padding:12px; color:#e7eef8; background:#0e141b; border:1px solid #334258; border-radius:6px; margin-top:8px; }
+select { width:100%; padding:10px; color:#e7eef8; background:#0e141b; border:1px solid #334258; border-radius:6px; }
+.controls { display:grid; gap:14px; align-content:start; }
+.seg { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.seg .on { background:#263f65; border-color:#5b86ca; }
+.metrics { display:grid; grid-template-columns:repeat(4,minmax(150px,1fr)); gap:12px; }
+.metrics .sectionHead { grid-column:1/-1; }
+.metric { min-height:84px; background:#111821; border:1px solid #263242; border-radius:8px; padding:14px; display:grid; align-content:space-between; }
+.metric span { color:#91a0b5; }
+.metric b { font-size:18px; overflow-wrap:anywhere; }
+.progress { height:10px; background:#0b0f14; border:1px solid #263242; border-radius:999px; overflow:hidden; margin-bottom:14px; }
+.progress span { display:block; height:100%; background:#4f8cff; }
+.imageFrame { min-height:360px; display:grid; place-items:center; overflow:hidden; color:#91a0b5; }
+.imageFrame img { width:100%; height:100%; max-height:520px; object-fit:contain; }
+.log { max-height:180px; overflow:auto; background:#0d1218; border:1px solid #263242; border-radius:8px; padding:10px 14px; margin-top:14px; color:#b9c5d6; }
+.log p { padding:5px 0; border-bottom:1px solid #17202b; }
+.actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+.modelList { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
+.model { display:grid; gap:8px; background:#111821; border:1px solid #263242; border-radius:8px; padding:14px; }
+code { color:#8ed1a3; white-space:normal; }
+table { width:100%; border-collapse:collapse; background:#111821; border:1px solid #263242; }
+td { padding:10px; border-bottom:1px solid #263242; }
+pre { white-space:pre-wrap; background:#0d1218; border:1px solid #263242; border-radius:8px; padding:14px; overflow:auto; }
+@media (max-width: 980px) {
+  .app { grid-template-columns:1fr; }
+  aside { position:relative; height:auto; }
+  .workgrid, .resultGrid, .metrics { grid-template-columns:1fr; }
+}
