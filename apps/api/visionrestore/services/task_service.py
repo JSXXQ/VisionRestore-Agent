@@ -1,14 +1,14 @@
-from concurrent.futures import ThreadPoolExecutor
+﻿from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 from visionrestore.agent.enhancement_agent import EnhancementAgent
 from visionrestore.schemas.common import now_iso
-from visionrestore.schemas.task import TaskCreate, TaskRecord
+from visionrestore.schemas.task import EnhancementPlan, TaskCreate, TaskRecord
 from visionrestore.storage.database import Database
 
 class TaskService:
     def __init__(self):
         self.db = Database()
-        self.pool = ThreadPoolExecutor(max_workers=2)
+        self.pool = ThreadPoolExecutor(max_workers=1)
         self.cancelled: set[str] = set()
 
     def create(self, request: TaskCreate) -> TaskRecord:
@@ -26,15 +26,16 @@ class TaskService:
             logs=["任务已创建，后台队列已接收。"],
         )
         if request.model_id:
-            from visionrestore.schemas.task import EnhancementPlan
+            checkpoint = request.checkpoint_id or request.weight_id
             task.plan = EnhancementPlan(
                 input_id=request.image_id,
                 user_goal=request.user_goal,
                 mode=request.mode,
                 priority=request.priority,
                 selected_model=request.model_id,
+                selected_checkpoint=checkpoint,
                 selection_reason=f"用户手动指定模型 {request.model_id}。",
-                parameters=request.parameters,
+                parameters={**request.parameters, "checkpoint_id": checkpoint},
             )
         self.save(task)
         self.pool.submit(EnhancementAgent().run, task, file_record, self.save)

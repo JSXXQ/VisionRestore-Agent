@@ -2,6 +2,7 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 New-Item -ItemType Directory -Force -Path ".task-pids" | Out-Null
+if (!(Test-Path "config\models.local.yaml")) { throw "Missing config/models.local.yaml" }
 if (!(Test-Path ".venv")) {
   Write-Host "Missing .venv; running setup.ps1 first"
   & "$PSScriptRoot\setup.ps1"
@@ -19,3 +20,4 @@ $web.Id | Set-Content ".task-pids\web.pid"
 Write-Host "VisionRestore Agent started"
 Write-Host "Web: http://127.0.0.1:5173"
 Write-Host "API docs: http://127.0.0.1:8000/docs"
+

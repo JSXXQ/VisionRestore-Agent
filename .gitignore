@@ -20,3 +20,8 @@ dist/
 .task-pids/
 *.egg-info/
 *.tsbuildinfo
+
+config/models.local.yaml
+master/
+背景图.png
+UI参考图.png

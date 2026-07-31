@@ -1,16 +1,14 @@
-from .base import ModelAdapter, EnhancementResult
+﻿from .base import ModelAdapter
 
 class RetinexformerAdapter(ModelAdapter):
     model_id = "retinexformer"
     display_name = "Retinexformer"
-    description = "质量优先的低照度图像恢复模型。"
+    description = "高质量主模型，支持 LOL-v2-real、SDSD-indoor、SDSD-outdoor、NTIRE 多领域权重。"
     repository_url = "https://github.com/caiyuanhao1998/Retinexformer"
-    license_name = "Author repository license required; see THIRD_PARTY_NOTICES.md"
+    license_name = "MIT License in local source"
     supported_devices = ["cuda"]
     supported_precisions = ["fp32", "fp16"]
-    source_markers = ["README.md"]
-    weight_files = ["retinexformer.pth"]
+    size_multiple = 4
+    supports_tiling = True
+    default_checkpoint = "lol_v2_real"
 
-    def enhance(self, image_path: str, output_path: str, device: str, precision: str, parameters: dict) -> EnhancementResult:
-        self.load()
-        raise RuntimeError("Retinexformer 适配器已保留，但本阶段未完成真实权重推理封装。")

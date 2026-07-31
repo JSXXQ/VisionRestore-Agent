@@ -1,0 +1,33 @@
+﻿external_python: "<path-to-cuda-pytorch-python.exe>"
+background_image_path: "<path-to-background-image>"
+ui_reference_image_path: "<path-to-ui-reference-image>"
+models:
+  retinexformer:
+    source_path: "<Retinexformer source path>"
+    weights:
+      lol_v2_real:
+        path: "<LOL_v2_real.pth>"
+        config_path: "<RetinexFormer_LOL_v2_real.yml>"
+      sdsd_indoor:
+        path: "<SDSD_indoor.pth>"
+        config_path: "<RetinexFormer_SDSD_indoor.yml>"
+      sdsd_outdoor:
+        path: "<SDSD_outdoor.pth>"
+        config_path: "<RetinexFormer_SDSD_outdoor.yml>"
+      ntire:
+        path: "<NTIRE.pth>"
+        config_path: "<RetinexFormer_NTIRE.yml>"
+  sci:
+    source_path: "<SCI CVPR source path>"
+    weights:
+      easy:
+        path: "<easy.pt>"
+      medium:
+        path: "<medium.pt>"
+      difficult:
+        path: "<difficult.pt>"
+  zero_dce:
+    source_path: "<Zero-DCE_code source path>"
+    weights:
+      epoch99:
+        path: "<Epoch99.pth>"

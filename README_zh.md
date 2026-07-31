@@ -1,86 +1,93 @@
-# VisionRestore Agent
+﻿# VisionRestore Agent
 
-多模型协同低照度图像增强 Agent。本项目只处理普通 RGB 静态图像，不包含事件相机、视频、连续帧、音频或时序相关功能。
+多模型协同低照度图像增强 Agent。本项目只处理普通 RGB 静态图像，不包含事件相机、视频、连续帧、音频、超分辨率、插帧或训练平台功能。
 
-## 核心功能
+## 当前已接入的本地模型
 
-- 本地 FastAPI REST API 与 React/Vite 网页工作台。
-- 安全上传 png、jpg、jpeg、bmp、tif、tiff。
-- 图像亮度、暗区、过曝、噪声、清晰度、色偏、动态范围等统计分析。
-- 确定性 Agent：分析图像、理解用户目标、检查硬件、选择模型、执行适配器、评价候选结果、导出报告。
-- ModelAdapter 框架：Zero-DCE、SCI、Retinexformer、SNR-Aware。
-- 未安装官方源码/权重时明确标记不可用，不伪造模型输出。
-- SQLite 记录任务和文件元数据，不保存图像二进制。
+- Retinexformer：LOL-v2-real、SDSD-indoor、SDSD-outdoor、NTIRE。
+- SCI：easy、medium、difficult。
+- Zero-DCE：Epoch99，作为经典轻量基线和最后兜底；上游 README 标明非商业/学术研究用途。
 
-## Windows 安装
+模型源码和权重路径保存在 `config/models.local.yaml`，该文件已加入 `.gitignore`。示例文件为 `config/models.example.yaml`。
 
-```powershell
-cd E:\codex_project\VisionRestore-Agent
-powershell -ExecutionPolicy Bypass -File scripts/setup.ps1
-```
+## 已验证真实推理
+
+使用 `E:\anconda\envs\pytorch\python.exe`，PyTorch 2.5.1，CUDA 12.1，RTX 3060 12GB：
+
+- Retinexformer LOL-v2-real：通过。
+- Retinexformer SDSD-outdoor：通过。
+- SCI medium：通过。
+- Zero-DCE Epoch99：通过。
+
+输出图像经过尺寸断言，保持输入宽高一致。
+
+## Agent 作用
+
+Agent 包含 ImageAnalyzer、IntentParser、HardwareInspector、ModelRegistry、HierarchicalRouter、模型适配器、QualityEvaluator、备用策略和报告生成。它不是固定调用单个模型。
+
+## 分层路由
+
+第一层选择模型架构：Retinexformer、SCI、Zero-DCE。第二层选择权重：Retinexformer 根据用户明确场景和优先级选择 LOL-v2-real/SDSD/NTIRE；SCI 根据亮度分位数、暗像素比例和动态范围选择 easy/medium/difficult。规则在 `config/routing_rules.yaml`。
+
+如果场景无法判断，显示“场景未知”，默认 LOL-v2-real，不用亮度统计伪造室内/室外语义。
 
 ## Windows 启动
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/start.ps1
+cd E:\codex_project\VisionRestore-Agent
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1
 ```
 
 网页：http://127.0.0.1:5173  
 API 文档：http://127.0.0.1:8000/docs
 
-## 权重下载
+停止：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/download_models.ps1 -Model zero_dce
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1
 ```
 
-大型权重不会提交到 Git。请根据各官方仓库说明放入 `weights/<model>/`。
+## 模型验证
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate_models.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_smoke_test.ps1
+```
 
 ## CLI
 
 ```powershell
 .\.venv\Scripts\python.exe -m visionrestore.cli analyze --input data\cache\test_images\low_light.png
-.\.venv\Scripts\python.exe -m visionrestore.cli enhance --input input.jpg --mode auto --priority quality --output output.png
+.\.venv\Scripts\python.exe -m visionrestore.cli enhance --input input.jpg --request "自然增强暗部，保护高光，质量优先" --mode auto --output output.png
+.\.venv\Scripts\python.exe -m visionrestore.cli enhance --input input.jpg --model retinexformer --weight lol_v2_real --output output.png
+.\.venv\Scripts\python.exe -m visionrestore.cli compare --input input.jpg --output output.png --candidates retinexformer:lol_v2_real retinexformer:sdsd_outdoor sci:difficult
 ```
+
+## API
+
+核心接口位于 `/api/v1/`，包括 health、system、models、model weights、intent parse、images、tasks、history、files、settings。任务创建后立即返回 `task_id`，前端通过轮询或 WebSocket 查看状态。
+
+## 评价指标
+
+第一版没有 GT 上传，因此不计算 PSNR、SSIM 或 LPIPS。系统只显示无参考指标：亮度变化、暗像素变化、过曝变化、对比度、动态范围、清晰度、噪声、色偏、熵、结构保持估计、耗时、显存和文件大小。
+
+无参考指标只能作为辅助判断，不能完全替代人工主观评价。
+
+## 显存不足和分辨率规则
+
+本项目不是超分辨率项目。用户保存的结果必须与输入图像宽高一致。模型内部如需填充，由 adapter/runner 处理，推理后裁剪回原始尺寸。高分辨率分块推理接口已保留，后续可继续完善加权融合策略。
 
 ## 测试
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
+npm.cmd run build --prefix apps\web
 ```
 
-## 架构
+当前测试：10 passed；前端构建通过。
 
-```mermaid
-flowchart LR
-  Web["React/Vite Web"] --> API["FastAPI /api/v1"]
-  API --> Service["Application Service"]
-  Service --> Agent["EnhancementAgent"]
-  Agent --> Planner["DeterministicPlanner"]
-  Agent --> Registry["Tool + Model Registry"]
-  Registry --> Adapter["ModelAdapter"]
-  Adapter --> Backend["PyTorchBackend"]
-  Service --> SQLite["SQLite Metadata"]
-```
+## 已知局限
 
-## Agent 工作流
-
-```mermaid
-flowchart TD
-  A["上传图像"] --> B["图像退化分析"]
-  B --> C["理解用户目标"]
-  C --> D["检查硬件与模型状态"]
-  D --> E["制定增强计划"]
-  E --> F["调用模型工具"]
-  F --> G["真实推理或诚实失败"]
-  G --> H["质量评价"]
-  H --> I["回退或比较"]
-  I --> J["导出图像和报告"]
-```
-
-## 常见问题
-
-- 没有 CUDA：系统会显示 CPU/CUDA 状态，并优先选择支持 CPU 的轻量模型。
-- 权重缺失：模型管理页会显示具体缺少的源码或权重。
-- API 认证：本地默认关闭，可通过 `.env` 打开。
-- 无参考指标：网页和报告中均说明不能完全替代人工主观判断。
+- 健康检查结果当前按请求返回，尚未持久化到每个 checkpoint 状态。
+- UI 已按参考图方向重做布局和背景，但拖动分割、同步缩放和平移仍需继续增强。
+- 自动化测试已覆盖核心链路，但尚未扩展到说明中列出的全部 20 类测试。

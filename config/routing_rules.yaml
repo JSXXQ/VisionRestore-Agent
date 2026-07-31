@@ -1,0 +1,62 @@
+﻿model_routing:
+  retinexformer_quality_bonus: 45
+  retinexformer_balanced_gpu_bonus: 28
+  sci_speed_bonus: 45
+  sci_cpu_bonus: 40
+  sci_low_memory_bonus: 35
+  zero_dce_manual_bonus: 30
+  zero_dce_fallback_bonus: 10
+  sufficient_gpu_memory_mb: 6000
+retinexformer_weights:
+  unknown: [lol_v2_real, ntire, sdsd_outdoor, sdsd_indoor]
+  indoor: [sdsd_indoor, lol_v2_real, ntire, sdsd_outdoor]
+  outdoor: [sdsd_outdoor, lol_v2_real, ntire, sdsd_indoor]
+sci_thresholds:
+  easy:
+    mean_luminance_min: 70
+    median_luminance_min: 62
+    dark_ratio_max: 0.35
+  difficult:
+    mean_luminance_max: 32
+    median_luminance_max: 30
+    p25_max: 24
+    dark_ratio_min: 0.72
+    dynamic_range_max: 70
+  medium: {}
+fallback:
+  max_auto_candidates: 2
+  still_dark_mean_luminance: 55
+  still_dark_ratio: 0.55
+  overexposure_increase: 0.035
+  color_cast_increase: 0.12
+  noise_increase: 18
+  sharpness_drop_ratio: 0.45
+  min_score_to_accept: 42
+quality_weights:
+  quality:
+    shadow_recovery: 0.24
+    highlight_protection: 0.20
+    color_stability: 0.16
+    noise_control: 0.14
+    sharpness: 0.10
+    structure: 0.08
+    runtime: 0.04
+    memory: 0.04
+  balanced:
+    shadow_recovery: 0.22
+    highlight_protection: 0.18
+    color_stability: 0.14
+    noise_control: 0.14
+    sharpness: 0.10
+    structure: 0.08
+    runtime: 0.08
+    memory: 0.06
+  speed:
+    shadow_recovery: 0.16
+    highlight_protection: 0.12
+    color_stability: 0.10
+    noise_control: 0.10
+    sharpness: 0.08
+    structure: 0.08
+    runtime: 0.22
+    memory: 0.14

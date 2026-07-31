@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+﻿from pydantic import BaseModel, Field
 
 class FileRecord(BaseModel):
     file_id: str
@@ -33,7 +33,9 @@ class ImageAnalysisResult(BaseModel):
     rms_contrast: float
     laplacian_sharpness: float
     noise_estimate: float
+    image_entropy: float = 0
     local_luminance_non_uniformity: float
+    total_pixels: int = 0
     suggest_tile_inference: bool
     estimated_memory_mb: float
     notes: list[str] = Field(default_factory=list)

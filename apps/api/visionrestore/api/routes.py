@@ -1,7 +1,8 @@
-from pathlib import Path
-from fastapi import APIRouter, File, HTTPException, UploadFile
+﻿from pathlib import Path
+from fastapi import APIRouter, File, HTTPException, UploadFile, WebSocket
 from fastapi.responses import FileResponse
 from visionrestore.adapters.registry import ModelRegistry
+from visionrestore.agent.intent_parser import IntentParser
 from visionrestore.core.config import get_settings
 from visionrestore.schemas.common import ok
 from visionrestore.schemas.task import TaskCreate
@@ -31,6 +32,20 @@ def models():
 def model_detail(model_id: str):
     try:
         return ok(ModelRegistry().get(model_id).get_status().model_dump())
+    except KeyError:
+        raise HTTPException(status_code=404, detail="模型不存在")
+
+@router.get("/models/{model_id}/weights")
+def model_weights(model_id: str):
+    try:
+        return ok(ModelRegistry().weights(model_id))
+    except KeyError:
+        raise HTTPException(status_code=404, detail="模型不存在")
+
+@router.post("/models/{model_id}/refresh")
+def refresh_model(model_id: str):
+    try:
+        return ok(ModelRegistry().refresh(model_id))
     except KeyError:
         raise HTTPException(status_code=404, detail="模型不存在")
 
@@ -89,6 +104,10 @@ async def analyze_image(file: UploadFile = File(...)):
     db.put_file(record.file_id, record.model_dump())
     analysis = ImageAnalyzer().analyze(str(resolve_registered_path(record.relative_path)))
     return ok({"file": record.model_dump(), "analysis": analysis.model_dump()})
+
+@router.post("/intent/parse")
+def parse_intent(payload: dict):
+    return ok(IntentParser().parse(payload.get("text", ""), payload.get("priority", "balanced"), payload.get("mode", "auto"), payload.get("model_id"), payload.get("checkpoint_id") or payload.get("weight_id")).model_dump())
 
 @router.post("/tasks")
 def create_task(payload: TaskCreate):
@@ -161,3 +180,24 @@ def get_settings_api():
 def put_settings_api(payload: dict):
     db.set_settings(payload)
     return ok(db.get_settings())
+
+@router.websocket("/tasks/{task_id}/stream")
+async def task_stream(websocket: WebSocket, task_id: str):
+    import asyncio
+    await websocket.accept()
+    last = None
+    for _ in range(600):
+        task = task_service.get(task_id)
+        if not task:
+            await websocket.send_json({"success": False, "message": "任务不存在"})
+            break
+        payload = task.model_dump()
+        if payload != last:
+            await websocket.send_json({"success": True, "data": payload})
+            last = payload
+        if task.status in {"completed", "failed", "cancelled"}:
+            break
+        await asyncio.sleep(0.5)
+    await websocket.close()
+
+

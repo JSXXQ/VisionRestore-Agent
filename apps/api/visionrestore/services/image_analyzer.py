@@ -10,6 +10,8 @@ class ImageAnalyzer:
         arr = np.asarray(rgb).astype(np.float32)
         luminance = 0.2126 * arr[..., 0] + 0.7152 * arr[..., 1] + 0.0722 * arr[..., 2]
         hist, _ = np.histogram(luminance, bins=64, range=(0, 255))
+        prob = hist.astype(np.float64) / max(1, hist.sum())
+        entropy = float(-np.sum(prob[prob > 0] * np.log2(prob[prob > 0])))
         p05, p25, p75, p95 = np.percentile(luminance, [5, 25, 75, 95])
         rgb_means = arr.reshape(-1, 3).mean(axis=0)
         color_cast_index = float(np.std(rgb_means) / (np.mean(rgb_means) + 1e-6))
@@ -17,7 +19,6 @@ class ImageAnalyzer:
             cast = "none"
         else:
             cast = ["red", "green", "blue"][int(np.argmax(rgb_means))]
-        # Simple edge residual noise estimate. It is an estimate, not a diagnostic truth.
         blur = np.asarray(rgb.filter(ImageFilter.GaussianBlur(radius=1))).astype(np.float32)
         noise_estimate = float(np.std(arr - blur))
         gray = rgb.convert("L")
@@ -59,11 +60,10 @@ class ImageAnalyzer:
             rms_contrast=float(np.std(luminance)),
             laplacian_sharpness=sharpness,
             noise_estimate=noise_estimate,
+            image_entropy=entropy,
             local_luminance_non_uniformity=local_non_uniformity,
+            total_pixels=pixels,
             suggest_tile_inference=pixels > 4_000_000,
             estimated_memory_mb=float(pixels * 3 * 4 * 6 / 1024 / 1024),
             notes=notes,
         )
-
-
-
