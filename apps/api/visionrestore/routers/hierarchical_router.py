@@ -1,6 +1,7 @@
 ﻿from dataclasses import dataclass
 from typing import Any
 from visionrestore.core.model_config import get_routing_rules
+from visionrestore.schemas.ai import MultimodalAnalysisResult
 
 @dataclass
 class RouteResult:
@@ -15,7 +16,7 @@ class HierarchicalRouter:
     def __init__(self):
         self.rules = get_routing_rules()
 
-    def route(self, *, intent, analysis, hardware: dict, model_statuses: list[dict], mode: str, requested_models: list[str] | None = None) -> RouteResult:
+    def route(self, *, intent, analysis, hardware: dict, model_statuses: list[dict], mode: str, requested_models: list[str] | None = None, semantic_analysis: MultimodalAnalysisResult | None = None) -> RouteResult:
         status = {m["model_id"]: m for m in model_statuses}
         available = {m["model_id"] for m in model_statuses if m.get("available")}
         mem = hardware.get("gpu_memory_mb") or 0
@@ -40,6 +41,7 @@ class HierarchicalRouter:
         # Zero-DCE is not first priority in auto mode.
         if mode != "auto":
             scores["zero_dce"] += 5
+        self._apply_semantic_model_bonus(scores, reasons, semantic_analysis, manual_locked=bool(intent.manual_model or intent.manual_weight or mode == "manual"))
         candidates = []
         for model_id, score in scores.items():
             st = status.get(model_id, {})
@@ -56,21 +58,21 @@ class HierarchicalRouter:
         candidates.sort(key=lambda x: x["score"], reverse=True)
         selected_model = candidates[0]["model_id"] if candidates else "sci"
         candidates[0]["selected"] = True
-        checkpoints = self._route_checkpoints(selected_model, intent, analysis, status.get(selected_model, {}))
+        checkpoints = self._route_checkpoints(selected_model, intent, analysis, status.get(selected_model, {}), semantic_analysis)
         selected_checkpoint = checkpoints[0]["checkpoint_id"] if checkpoints else ""
         if checkpoints:
             checkpoints[0]["selected"] = True
         fallback = []
         for cand in candidates[1:]:
             if cand["status"] != "unavailable":
-                ck = self._route_checkpoints(cand["model_id"], intent, analysis, status.get(cand["model_id"], {}))
+                ck = self._route_checkpoints(cand["model_id"], intent, analysis, status.get(cand["model_id"], {}), semantic_analysis)
                 if ck:
                     fallback.append((cand["model_id"], ck[0]["checkpoint_id"]))
         for ck in checkpoints[1:]:
             fallback.insert(0, (selected_model, ck["checkpoint_id"]))
         return RouteResult(selected_model, selected_checkpoint, candidates, checkpoints, fallback, "; ".join(candidates[0]["reasons"]))
 
-    def _route_checkpoints(self, model_id: str, intent, analysis, model_status: dict) -> list[dict[str, Any]]:
+    def _route_checkpoints(self, model_id: str, intent, analysis, model_status: dict, semantic_analysis: MultimodalAnalysisResult | None = None) -> list[dict[str, Any]]:
         weights = model_status.get("capabilities", {}).get("weights", [])
         existing = {w["checkpoint_id"]: w for w in weights if w.get("exists")}
         if not existing:
@@ -90,18 +92,51 @@ class HierarchicalRouter:
         else:
             ordered = ["epoch99"]
         ranked = []
+        semantic_bonus = self._semantic_checkpoint_bonus(model_id, semantic_analysis, manual_locked=bool(intent.manual_weight))
         for idx, ck in enumerate(ordered):
             if ck in existing:
+                bonus = semantic_bonus.get(ck, 0)
                 ranked.append({
                     "checkpoint_id": ck,
                     "display_name": existing[ck].get("display_name", ck),
-                    "score": 100 - idx * 10,
+                    "score": 100 - idx * 10 + bonus,
                     "status": "found",
                     "selected": False,
-                    "reason": self._checkpoint_reason(model_id, ck, intent),
+                    "reason": self._checkpoint_reason(model_id, ck, intent) + (f"；多模态语义建议 +{bonus:.1f} 分" if bonus else ""),
                     "metadata": existing[ck],
                 })
+        ranked.sort(key=lambda item: item["score"], reverse=True)
         return ranked
+
+    def _apply_semantic_model_bonus(self, scores: dict[str, float], reasons: dict[str, list[str]], semantic_analysis: MultimodalAnalysisResult | None, manual_locked: bool) -> None:
+        if manual_locked or not semantic_analysis or not semantic_analysis.adopted:
+            return
+        rules = self.rules.get("multimodal_routing", {})
+        cap = float(rules.get("semantic_bonus_max", 20))
+        confidence = max(0.0, min(float(semantic_analysis.confidence or semantic_analysis.scene_confidence or 0), 1.0))
+        for item in semantic_analysis.model_candidates:
+            if item.model_id not in scores:
+                continue
+            bonus = cap * max(0.0, min(float(item.score), 100.0)) / 100.0 * confidence
+            if bonus <= 0:
+                continue
+            scores[item.model_id] += bonus
+            reasons[item.model_id].append(f"多模态语义建议 +{bonus:.1f} 分（上限 {cap:.0f}）")
+
+    def _semantic_checkpoint_bonus(self, model_id: str, semantic_analysis: MultimodalAnalysisResult | None, manual_locked: bool) -> dict[str, float]:
+        if manual_locked or not semantic_analysis or not semantic_analysis.adopted:
+            return {}
+        rules = self.rules.get("multimodal_routing", {})
+        cap = float(rules.get("semantic_bonus_max", 20))
+        confidence = max(0.0, min(float(semantic_analysis.confidence or semantic_analysis.scene_confidence or 0), 1.0))
+        bonuses: dict[str, float] = {}
+        for item in semantic_analysis.checkpoint_candidates:
+            if item.model_id != model_id:
+                continue
+            bonus = cap * max(0.0, min(float(item.score), 100.0)) / 100.0 * confidence
+            if bonus > bonuses.get(item.checkpoint_id, 0):
+                bonuses[item.checkpoint_id] = bonus
+        return bonuses
 
     def _select_sci_weight(self, analysis) -> str:
         th = self.rules.get("sci_thresholds", {})

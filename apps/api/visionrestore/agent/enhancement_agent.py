@@ -2,9 +2,14 @@
 from uuid import uuid4
 from visionrestore.adapters.registry import ModelRegistry
 from visionrestore.agent.intent_parser import IntentParser
+from visionrestore.ai.preview import create_ai_preview
+from visionrestore.ai.providers import AIProviderError, DisabledAnalysisProvider, is_image_input_unsupported_error
+from visionrestore.ai.registry import ProviderRegistry
+from visionrestore.ai.validation import validate_multimodal_result
 from visionrestore.core.config import get_settings
 from visionrestore.core.model_config import get_routing_rules
 from visionrestore.routers.hierarchical_router import HierarchicalRouter
+from visionrestore.schemas.ai import MultimodalAnalysisResult
 from visionrestore.schemas.common import now_iso
 from visionrestore.schemas.task import CandidateResult, EnhancementPlan, RetryRecord, TaskRecord
 from visionrestore.services.evaluator import QualityEvaluator
@@ -51,10 +56,27 @@ class EnhancementAgent:
             task.hardware_info = hw
             model_status = self.registry.list()
 
-            step("routing_model", 0.34, "执行第一层模型架构路由。")
-            route = self.router.route(intent=intent, analysis=analysis, hardware=hw, model_statuses=model_status, mode=task.mode)
+            step("routing_model", 0.32, "增强前执行多模态语义分析，并通过本地校验。")
+            task.ai_analysis = self._run_ai_analysis(
+                input_path=input_path,
+                image_metrics=analysis,
+                user_request=task.user_goal,
+                available_models=model_status,
+                hardware_summary=hw,
+                analysis_mode=getattr(task, "analysis_mode", "local"),
+                manual_model=manual_model,
+                manual_checkpoint=manual_weight,
+            )
+            if task.ai_analysis.adopted:
+                logs.append("多模态语义建议已在路由前通过校验，将按配置上限参与模型/权重评分。")
+            elif task.ai_analysis.failure_reason or task.ai_analysis.rejection_reason:
+                logs.append(f"多模态语义建议未参与评分：{task.ai_analysis.rejection_reason or task.ai_analysis.failure_reason}。")
+            save_task(task)
+
+            step("routing_model", 0.36, "执行第一层模型架构路由。")
+            route = self.router.route(intent=intent, analysis=analysis, hardware=hw, model_statuses=model_status, mode=task.mode, semantic_analysis=task.ai_analysis)
             task.model_candidates = route.model_candidates
-            step("routing_checkpoint", 0.42, "执行第二层权重路由。")
+            step("routing_checkpoint", 0.44, "执行第二层权重路由。")
             task.checkpoint_candidates = route.checkpoint_candidates
             task.plan = EnhancementPlan(
                 input_id=task.image_id,
@@ -163,6 +185,122 @@ class EnhancementAgent:
             task.completed_at = now_iso()
             logs.append(f"任务失败：{exc}")
             save_task(task)
+
+    def _run_ai_analysis(
+        self,
+        *,
+        input_path: Path,
+        image_metrics,
+        user_request: str,
+        available_models: list[dict],
+        hardware_summary: dict,
+        analysis_mode: str,
+        manual_model: str | None,
+        manual_checkpoint: str | None,
+    ) -> MultimodalAnalysisResult:
+        settings = get_settings()
+        provider = ProviderRegistry().get()
+        use_external = analysis_mode != "local" and settings.multimodal_analysis_enabled and provider.provider_id != "disabled"
+        if not use_external:
+            result = DisabledAnalysisProvider(settings).analyze(
+                image_preview=None,
+                image_metrics=image_metrics,
+                user_request=user_request,
+                available_models=available_models,
+                hardware_summary=hardware_summary,
+                analysis_mode=analysis_mode,
+            )
+            result.validation_passed = True
+            result.local_validation = {"external_provider": "not_used", "final_authority": "local_rules"}
+            result.adopted = False
+            result.rejection_reason = "NO_EXTERNAL_MULTIMODAL_ADVICE"
+            return result
+        image_preview = None
+        if analysis_mode == "multimodal" and settings.multimodal_send_image:
+            image_preview, _ = create_ai_preview(input_path)
+        try:
+            return self._validated_provider_analysis(
+                provider=provider,
+                image_preview=image_preview,
+                image_metrics=image_metrics,
+                user_request=user_request,
+                available_models=available_models,
+                hardware_summary=hardware_summary,
+                analysis_mode=analysis_mode,
+                manual_model=manual_model,
+                manual_checkpoint=manual_checkpoint,
+            )
+        except AIProviderError as exc:
+            if image_preview is not None and is_image_input_unsupported_error(exc):
+                try:
+                    result = self._validated_provider_analysis(
+                        provider=provider,
+                        image_preview=None,
+                        image_metrics=image_metrics,
+                        user_request=user_request,
+                        available_models=available_models,
+                        hardware_summary=hardware_summary,
+                        analysis_mode="text_only",
+                        manual_model=manual_model,
+                        manual_checkpoint=manual_checkpoint,
+                    )
+                    result.warnings = [
+                        "当前配置的模型不支持图像输入，已自动改用文字/本地指标 AI 分析。",
+                        *list(result.warnings or []),
+                    ]
+                    result.local_validation = {
+                        **result.local_validation,
+                        "image_mode_retry": "downgraded_to_text_only",
+                        "image_mode_failure": exc.code,
+                    }
+                    return result
+                except AIProviderError as retry_exc:
+                    exc = retry_exc
+            result = DisabledAnalysisProvider(settings).analyze(
+                image_preview=None,
+                image_metrics=image_metrics,
+                user_request=user_request,
+                available_models=available_models,
+                hardware_summary=hardware_summary,
+                analysis_mode=analysis_mode,
+            )
+            result.failure_reason = exc.code
+            result.validation_passed = False
+            result.validation_errors = [exc.code]
+            result.local_validation = {"fallback": "local_rules"}
+            result.adopted = False
+            result.rejection_reason = exc.code
+            result.warnings = [f"多模态 AI 调用失败，已回退本地规则分析：{exc.message}"]
+            return result
+
+    def _validated_provider_analysis(
+        self,
+        *,
+        provider,
+        image_preview,
+        image_metrics,
+        user_request: str,
+        available_models: list[dict],
+        hardware_summary: dict,
+        analysis_mode: str,
+        manual_model: str | None,
+        manual_checkpoint: str | None,
+    ) -> MultimodalAnalysisResult:
+        result = provider.analyze(
+            image_preview=image_preview,
+            image_metrics=image_metrics,
+            user_request=user_request,
+            available_models=available_models,
+            hardware_summary=hardware_summary,
+            analysis_mode=analysis_mode,
+        )
+        return validate_multimodal_result(
+            result,
+            available_models=available_models,
+            hardware_summary=hardware_summary,
+            manual_model=manual_model,
+            manual_checkpoint=manual_checkpoint,
+        )
 
     def _needs_fallback(self, metrics: dict) -> bool:
         fb = self.rules.get("fallback", {})

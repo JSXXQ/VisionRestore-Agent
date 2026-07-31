@@ -128,9 +128,11 @@ type Task = {
   status: string;
   image_id: string;
   user_goal: string;
+  analysis_mode?: AnalysisMode;
   progress: number;
   logs: string[];
   analysis?: Analysis;
+  ai_analysis?: AIAnalysis;
   user_intent?: Intent;
   hardware_info?: Record<string, unknown>;
   model_candidates: Array<Record<string, unknown>>;
@@ -313,6 +315,7 @@ function App() {
       setTask(next);
       setAnalysis(next.analysis || null);
       setIntent(next.user_intent || null);
+      setAiAnalysis(next.ai_analysis || null);
       if (["completed", "failed", "cancelled"].includes(next.status)) refresh();
     }, 1000);
     return () => window.clearInterval(id);
@@ -339,6 +342,7 @@ function App() {
       setTask(latest);
       setAnalysis(latest.analysis || null);
       setIntent(latest.user_intent || null);
+      setAiAnalysis(latest.ai_analysis || null);
       setGoal(latest.user_goal || goal);
     }
   }, [history, task, file]);
@@ -418,7 +422,6 @@ function App() {
         id = uploaded.file_id;
         setImageId(id);
       }
-      runAiAnalyze(id).catch(() => undefined);
       const created = await api<Task>("/api/v1/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -427,6 +430,7 @@ function App() {
           user_goal: goal,
           mode,
           priority,
+          analysis_mode: analysisMode,
           model_id: mode === "manual" ? model : undefined,
           checkpoint_id: mode === "manual" ? checkpoint : undefined,
         }),
@@ -475,7 +479,7 @@ function App() {
               <ComparePanel preview={previewUrl} resultUrl={resultUrl} task={task} analysis={activeAnalysis} />
               <BottomPanel tab={tab} setTab={setTab} task={task} preview={previewUrl} />
             </div>
-            <DecisionCenter task={task} analysis={activeAnalysis} intent={activeIntent} goal={goal} models={models} aiAnalysis={aiAnalysis} analysisMode={analysisMode} aiProviders={aiProviders} aiSettings={aiSettings} />
+            <DecisionCenter task={task} analysis={activeAnalysis} intent={activeIntent} goal={goal} models={models} aiAnalysis={task?.ai_analysis || aiAnalysis} analysisMode={task?.analysis_mode || analysisMode} aiProviders={aiProviders} aiSettings={aiSettings} />
           </>
         )}
         {view === "models" && <ModelsPage models={models} refresh={refresh} />}

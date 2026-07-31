@@ -1,5 +1,6 @@
 ﻿from typing import Literal
 from pydantic import BaseModel, Field
+from .ai import AnalysisMode, MultimodalAnalysisResult
 from .image import ImageAnalysisResult
 from .intent import UserIntent
 
@@ -35,6 +36,7 @@ class TaskCreate(BaseModel):
     user_goal: str = ""
     mode: TaskMode = "auto"
     priority: Priority = "balanced"
+    analysis_mode: AnalysisMode = "local"
     model_id: str | None = None
     checkpoint_id: str | None = None
     weight_id: str | None = None
@@ -80,8 +82,10 @@ class TaskRecord(BaseModel):
     user_goal: str = ""
     mode: TaskMode
     priority: Priority
+    analysis_mode: AnalysisMode = "local"
     progress: float = 0
     user_intent: UserIntent | None = None
+    ai_analysis: MultimodalAnalysisResult | None = None
     hardware_info: dict | None = None
     model_candidates: list[dict] = Field(default_factory=list)
     checkpoint_candidates: list[dict] = Field(default_factory=list)

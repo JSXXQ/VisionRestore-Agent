@@ -22,6 +22,7 @@ class TaskService:
             user_goal=request.user_goal,
             mode=request.mode,
             priority=request.priority,
+            analysis_mode=request.analysis_mode,
             created_at=now_iso(),
             logs=["任务已创建，后台队列已接收。"],
         )
