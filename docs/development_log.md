@@ -28,6 +28,11 @@ This is an incremental optimization project. The current working local upload, i
 - Frontend has been moved away from raw debug panels into cards, tables, timeline, candidate cards, metrics table, and settings cards.
 - Top bar GPU and model counts come from `/api/v1/system` and `/api/v1/models`, not from hardcoded UI reference values.
 - Real result metadata is returned on candidates: `is_mock`, `adapter_class`, `model_id`, `checkpoint_id`, `checkpoint_path`, `checkpoint_sha256`, `device`, `precision`, `runtime_ms`, `peak_memory_mb`, `input_sha256`, and `output_sha256`.
+- Optional multimodal AI provider layer exists with `disabled`, `openai`, `openai_compatible`, `anthropic`, and `gemini` provider slots.
+- `openai_compatible` supports any vendor that exposes an OpenAI-style `/chat/completions` endpoint.
+- `/api/v1/ai/*` endpoints exist for provider listing, provider health check, analysis, public settings, and current-provider testing.
+- `MultimodalAnalysisResult` validates provider output with strict model/checkpoint enums.
+- Frontend workbench includes analysis mode selection: local, text AI, and multimodal AI.
 - Screenshots exist:
   - `docs/screenshots/final-workbench.png`
   - `docs/screenshots/final-model-center.png`
@@ -44,21 +49,14 @@ This is an incremental optimization project. The current working local upload, i
 
 ## Not Completed
 
-- `MultimodalAnalysisProvider` abstraction does not exist yet.
-- `DisabledAnalysisProvider`, `OpenAIAnalysisProvider`, `ClaudeAnalysisProvider`, and `GeminiAnalysisProvider` do not exist yet.
-- Provider registry for multimodal analysis does not exist yet.
-- `/api/v1/ai/providers`, `/api/v1/ai/providers/{provider_id}/health-check`, `/api/v1/ai/analyze`, `/api/v1/ai/settings`, `/api/v1/ai/test` do not exist yet.
-- `MultimodalAnalysisResult` Pydantic schema does not exist yet.
-- Local validation for AI-suggested model/checkpoint enums does not exist yet.
-- Preview-image generation for cloud multimodal analysis does not exist yet.
+- Native Anthropic Claude and Gemini request formats are not implemented yet; their provider slots are present but not healthy.
 - `HybridRoutingEngine` does not exist yet.
 - Multimodal AI suggestions are not integrated into routing.
 - User privacy modes are not represented in the frontend yet:
   - local only
   - text and metrics only
   - multimodal preview image
-- `.env.example` does not yet include multimodal provider settings.
-- Automated tests for providers, invalid AI outputs, timeout fallback, auth failure fallback, EXIF stripping, preview max edge, hybrid routing, and frontend no-raw-JSON are not yet added.
+- Automated tests for timeout fallback, auth failure fallback, EXIF stripping, preview max edge, hybrid routing, and frontend no-raw-JSON are not yet added.
 
 ## Mock Audit
 
@@ -192,12 +190,13 @@ Existing tests cover:
 - SQLite persistence.
 - Task smoke path.
 - Upload security.
+- AI provider listing and secret redaction.
+- Disabled provider local fallback.
+- Structured AI output validation.
+- OpenAI-compatible provider with mocked HTTP.
 
 Known gaps:
 
-- Disabled provider.
-- OpenAI provider with mocked HTTP.
-- Structured AI result validation.
 - Invalid model/checkpoint rejection.
 - Provider timeout fallback.
 - Provider auth failure fallback.

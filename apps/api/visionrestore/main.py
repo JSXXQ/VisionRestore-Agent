@@ -3,6 +3,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from visionrestore.api.ai_routes import router as ai_router
 from visionrestore.api.routes import router
 from visionrestore.core.config import PROJECT_ROOT, get_settings
 from visionrestore.schemas.common import ApiError, now_iso
@@ -28,6 +29,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     raise exc
 
 app.include_router(router)
+app.include_router(ai_router)
 
 dist = PROJECT_ROOT / "apps" / "web" / "dist"
 if dist.exists():

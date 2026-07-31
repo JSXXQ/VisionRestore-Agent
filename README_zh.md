@@ -42,7 +42,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1
 本地 FastAPI：http://127.0.0.1:8000  
 API 文档：http://127.0.0.1:8000/docs
 
-默认工作流不需要任何云端 API Key。推理使用 `config/models.local.yaml` 指向的本地 PyTorch 环境、本地模型源码和本地权重；IntentParser 使用本地规则；LLM 路由默认未启用，只有未来显式配置后才会使用。
+默认工作流不需要任何云端 API Key。推理使用 `config/models.local.yaml` 指向的本地 PyTorch 环境、本地模型源码和本地权重；IntentParser 使用本地规则。
+
+多模态 AI 是可选功能，并且不是 OpenAI 专用。后端现在提供 `disabled`、`openai`、`openai_compatible`、`anthropic`、`gemini` 供应商槽位。其中 `openai_compatible` 可以连接任何兼容 OpenAI `/chat/completions` 格式的厂商 Base URL。默认仍是 `disabled`，外部 API 只做语义分析和路由建议，不直接控制本地模型推理。
 
 停止：
 
@@ -69,6 +71,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_smoke_test.ps1
 ## API
 
 核心接口位于 `/api/v1/`，包括 health、system、models、model weights、intent parse、images、tasks、history、files、settings。任务创建后立即返回 `task_id`，前端通过轮询或 WebSocket 查看状态。
+
+可选多模态 AI 接口位于 `/api/v1/ai/`：
+
+- `GET /api/v1/ai/providers`
+- `POST /api/v1/ai/providers/{provider_id}/health-check`
+- `POST /api/v1/ai/analyze`
+- `GET /api/v1/ai/settings`
+- `PUT /api/v1/ai/settings`
+- `POST /api/v1/ai/test`
+
+这些接口不会把完整 API Key 返回给前端；未启用或未配置时会回退到本地规则分析。
 
 ## 评价指标
 

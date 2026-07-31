@@ -148,6 +148,47 @@ type SystemInfo = {
   settings?: Record<string, unknown>;
 };
 
+type AnalysisMode = "local" | "text_only" | "multimodal";
+
+type AIProviderStatus = {
+  provider_id: string;
+  display_name: string;
+  implemented: boolean;
+  configured: boolean;
+  healthy: boolean;
+  supports_image: boolean;
+  current_model?: string;
+  last_error?: string;
+  error_code?: string;
+};
+
+type AIAnalysis = {
+  provider: string;
+  model: string;
+  scene: string;
+  subscene: string;
+  scene_confidence: number;
+  main_subjects: string[];
+  important_light_sources: string[];
+  critical_regions: string[];
+  interpreted_intent: string[];
+  reasoning_summary: string;
+  warnings: string[];
+  confidence: number;
+  fallback_used: boolean;
+  failure_reason?: string;
+  analysis_mode: AnalysisMode;
+  sent_image: boolean;
+  runtime_ms: number;
+};
+
+type AISettings = {
+  enabled: boolean;
+  provider: string;
+  send_image: boolean;
+  providers: Record<string, { configured: boolean; healthy: boolean; implemented: boolean; supports_image: boolean; current_model?: string }>;
+};
+
 const api = async <T,>(url: string, init?: RequestInit): Promise<T> => {
   const res = await fetch(url, init);
   if (!res.ok) throw new Error(await res.text());
@@ -199,6 +240,10 @@ function App() {
   const [intent, setIntent] = useState<Intent | null>(null);
   const [task, setTask] = useState<Task | null>(null);
   const [history, setHistory] = useState<Task[]>([]);
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("local");
+  const [aiProviders, setAiProviders] = useState<AIProviderStatus[]>([]);
+  const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [tab, setTab] = useState("candidates");
   const [view, setView] = useState("workbench");
   const [busy, setBusy] = useState(false);
@@ -208,6 +253,8 @@ function App() {
     api<ModelStatus[]>("/api/v1/models").then(setModels).catch((err) => setNotice(String(err)));
     api<SystemInfo>("/api/v1/system").then(setSystem).catch((err) => setNotice(String(err)));
     api<Task[]>("/api/v1/history").then(setHistory).catch(() => undefined);
+    api<AIProviderStatus[]>("/api/v1/ai/providers").then(setAiProviders).catch(() => undefined);
+    api<AISettings>("/api/v1/ai/settings").then(setAiSettings).catch(() => undefined);
   };
 
   useEffect(refresh, []);
@@ -263,6 +310,7 @@ function App() {
     setFile(f);
     setAnalysis(null);
     setIntent(null);
+    setAiAnalysis(null);
     setImageId("");
     setTask(null);
     setNotice("");
@@ -286,6 +334,19 @@ function App() {
     return parsed;
   };
 
+  const runAiAnalyze = async (id: string) => {
+    const response = await api<{ analysis: AIAnalysis; preview: unknown }>("/api/v1/ai/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image_id: id,
+        user_request: goal,
+        analysis_mode: analysisMode,
+      }),
+    });
+    setAiAnalysis(response.analysis);
+  };
+
   const uploadAnalyze = async () => {
     if (!file) return;
     setBusy(true);
@@ -297,6 +358,7 @@ function App() {
       setImageId(data.file.file_id);
       setAnalysis(data.analysis);
       await parseIntent();
+      await runAiAnalyze(data.file.file_id);
     } catch (err) {
       setNotice(String(err));
     } finally {
@@ -317,6 +379,7 @@ function App() {
         id = uploaded.file_id;
         setImageId(id);
       }
+      runAiAnalyze(id).catch(() => undefined);
       const created = await api<Task>("/api/v1/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -354,6 +417,9 @@ function App() {
                 setGoal={setGoal}
                 mode={mode}
                 setMode={setMode}
+                analysisMode={analysisMode}
+                setAnalysisMode={setAnalysisMode}
+                aiSettings={aiSettings}
                 priority={priority}
                 setPriority={setPriority}
                 models={models}
@@ -370,7 +436,7 @@ function App() {
               <ComparePanel preview={previewUrl} resultUrl={resultUrl} task={task} analysis={activeAnalysis} />
               <BottomPanel tab={tab} setTab={setTab} task={task} preview={previewUrl} />
             </div>
-            <DecisionCenter task={task} analysis={activeAnalysis} intent={activeIntent} goal={goal} models={models} />
+            <DecisionCenter task={task} analysis={activeAnalysis} intent={activeIntent} goal={goal} models={models} aiAnalysis={aiAnalysis} analysisMode={analysisMode} aiProviders={aiProviders} aiSettings={aiSettings} />
           </>
         )}
         {view === "models" && <ModelsPage models={models} refresh={refresh} />}
@@ -436,6 +502,9 @@ function InputPanel(props: {
   setGoal: (value: string) => void;
   mode: Mode;
   setMode: (value: Mode) => void;
+  analysisMode: AnalysisMode;
+  setAnalysisMode: (value: AnalysisMode) => void;
+  aiSettings: AISettings | null;
   priority: Priority;
   setPriority: (value: Priority) => void;
   models: ModelStatus[];
@@ -479,6 +548,13 @@ function InputPanel(props: {
             {(Object.keys(modeLabels) as Mode[]).map((item) => (
               <button key={item} className={props.mode === item ? "active" : ""} onClick={() => props.setMode(item)}>{modeLabels[item]}</button>
             ))}
+          </ControlGroup>
+          <ControlGroup label="分析方式">
+            {(["local", "text_only", "multimodal"] as AnalysisMode[]).map((item) => {
+              const cloudDisabled = item !== "local" && !props.aiSettings?.enabled;
+              const label = item === "local" ? "纯本地分析" : item === "text_only" ? "文字AI分析" : "多模态AI分析";
+              return <button key={item} className={props.analysisMode === item ? "active" : ""} disabled={cloudDisabled} title={cloudDisabled ? "尚未配置多模态AI API" : ""} onClick={() => props.setAnalysisMode(item)}>{label}</button>;
+            })}
           </ControlGroup>
           {props.mode === "manual" && (
             <div className="manual-selects">
@@ -536,7 +612,7 @@ function ImageSlot({ label, src }: { label: string; src?: string }) {
   return <div className="image-slot"><span>{label}</span>{src ? <img src={src} /> : <div className="empty-image"><FileImage />{label}</div>}</div>;
 }
 
-function DecisionCenter({ task, analysis, intent, goal, models }: { task: Task | null; analysis: Analysis | null | undefined; intent: Intent | null | undefined; goal: string; models: ModelStatus[] }) {
+function DecisionCenter({ task, analysis, intent, goal, models, aiAnalysis, analysisMode, aiProviders, aiSettings }: { task: Task | null; analysis: Analysis | null | undefined; intent: Intent | null | undefined; goal: string; models: ModelStatus[]; aiAnalysis: AIAnalysis | null; analysisMode: AnalysisMode; aiProviders: AIProviderStatus[]; aiSettings: AISettings | null }) {
   return (
     <aside className="agent-panel">
       <div className="panel-title">
@@ -545,6 +621,7 @@ function DecisionCenter({ task, analysis, intent, goal, models }: { task: Task |
       </div>
       <AnalysisCard analysis={analysis} />
       <IntentCard intent={intent} goal={goal} />
+      <SemanticCard aiAnalysis={aiAnalysis} analysisMode={analysisMode} aiProviders={aiProviders} aiSettings={aiSettings} />
       <RouteCard title="模型架构路由" items={task?.model_candidates || []} selected={task?.plan?.selected_model} kind="model" />
       <WeightRouteCard items={task?.checkpoint_candidates || []} selected={task?.plan?.selected_checkpoint} />
       <TimelineCard task={task} />
@@ -596,6 +673,44 @@ function IntentCard({ intent, goal }: { intent: Intent | null | undefined; goal:
       <p className="intent-text">{intent?.raw_text || goal || "等待用户需求"}</p>
       <div className="tag-row">{tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div>
       {!!intent?.evidence?.length && <p className="evidence">{intent.evidence.join(" / ")}</p>}
+    </Card>
+  );
+}
+
+function SemanticCard({ aiAnalysis, analysisMode, aiProviders, aiSettings }: { aiAnalysis: AIAnalysis | null; analysisMode: AnalysisMode; aiProviders: AIProviderStatus[]; aiSettings: AISettings | null }) {
+  const activeProvider = aiProviders.find((item) => item.provider_id === aiSettings?.provider);
+  const modeText = analysisMode === "local" ? "纯本地分析" : analysisMode === "text_only" ? "文字AI分析" : "多模态AI分析";
+  if (!aiAnalysis) {
+    return (
+      <Card title="场景语义" icon={<Brain />}>
+        <div className="ai-status">
+          <InfoRow label="分析方式" value={modeText} />
+          <InfoRow label="AI提供商" value={activeProvider?.display_name || "disabled"} />
+          <InfoRow label="状态" value={aiSettings?.enabled ? "等待分析" : "当前使用本地规则分析"} />
+        </div>
+        {!aiSettings?.enabled && <p className="note-line">多模态 AI 未启用；不会发送图像或文字到外部 API。</p>}
+      </Card>
+    );
+  }
+  const tags = [
+    aiAnalysis.scene && `场景：${aiAnalysis.scene}`,
+    aiAnalysis.subscene && `子场景：${aiAnalysis.subscene}`,
+    ...aiAnalysis.main_subjects.slice(0, 3).map((item) => `主体：${item}`),
+    ...aiAnalysis.important_light_sources.slice(0, 3).map((item) => `光源：${item}`),
+    ...aiAnalysis.critical_regions.slice(0, 3).map((item) => `高风险：${item}`),
+  ].filter(Boolean);
+  return (
+    <Card title="场景语义" icon={<Brain />}>
+      <div className="metric-grid">
+        <Metric label="分析方式" value={modeText} />
+        <Metric label="提供商/模型" value={`${aiAnalysis.provider} / ${aiAnalysis.model}`} />
+        <Metric label="是否发图" value={aiAnalysis.sent_image ? "发送缩略预览" : "未发送图像"} />
+        <Metric label="置信度" value={fmt(aiAnalysis.confidence || aiAnalysis.scene_confidence, 2)} />
+      </div>
+      <div className="tag-row">{tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div>
+      <p className="evidence">{aiAnalysis.reasoning_summary || "本地统计分析无法可靠识别复杂场景语义。"}</p>
+      {!!aiAnalysis.warnings?.length && <p className="note-line">{aiAnalysis.warnings.join(" / ")}</p>}
+      {aiAnalysis.fallback_used && <span className="tag warn">已回退本地规则</span>}
     </Card>
   );
 }
