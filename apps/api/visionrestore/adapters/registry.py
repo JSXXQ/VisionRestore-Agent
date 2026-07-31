@@ -11,7 +11,7 @@ class ModelRegistry:
             "sci": SCIAdapter(),
             "zero_dce": ZeroDCEAdapter(),
         }
-        if get_settings().allow_mock_models:
+        if get_settings().mock_models_enabled:
             self.adapters["mock_model"] = MockModelAdapter()
 
     def list(self):

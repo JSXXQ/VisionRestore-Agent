@@ -23,7 +23,7 @@ class DeterministicPlanner:
             preferred = "zero_dce"
             reason = "用户提到 Zero-DCE。"
         if preferred not in installed:
-            fallback = [m for m in ["zero_dce", "sci", "retinexformer", "snr_aware", "mock_model"] if m in installed and m != preferred]
+            fallback = [m for m in ["zero_dce", "sci", "retinexformer", "snr_aware"] if m in installed and m != preferred]
             reason += f" 但 {preferred} 当前不可用，将尝试可用备用模型。" if fallback else f" 但 {preferred} 当前不可用，且没有可用真实模型。"
         else:
             fallback = [m for m in ["zero_dce", "sci", "retinexformer", "snr_aware"] if m in installed and m != preferred]

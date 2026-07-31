@@ -13,6 +13,16 @@ class EnhancementResult(BaseModel):
     runtime_ms: int
     peak_memory_mb: float = 0
     logs: list[str] = []
+    is_mock: bool = False
+    adapter_class: str | None = None
+    model_id: str | None = None
+    checkpoint_id: str | None = None
+    checkpoint_path: str | None = None
+    checkpoint_sha256: str | None = None
+    device: str | None = None
+    precision: str | None = None
+    input_sha256: str | None = None
+    output_sha256: str | None = None
 
 class ModelAdapter(ABC):
     model_id: str
@@ -165,6 +175,16 @@ class ModelAdapter(ABC):
         checkpoint_id = (parameters or {}).get("checkpoint_id") or self.default_checkpoint
         weight = self.validate_weight(checkpoint_id)
         params = self.validate_parameters(parameters)
+        run_device = params.get("device", device or "cuda")
+        run_precision = params.get("precision", precision or "fp32")
+        input_digest = file_sha256(image_path)
+        checkpoint_digest = weight.get("sha256") or file_sha256(weight["path"])
+        logs = [
+            f"Loading real model adapter: {self.__class__.__name__}",
+            f"Loading checkpoint: {checkpoint_id}",
+            f"Checkpoint SHA256: {checkpoint_digest}",
+            f"Running inference on {run_device}: {self.model_id}:{checkpoint_id}",
+        ]
         cmd = [
             external_python(),
             str(PROJECT_ROOT / "scripts" / "model_infer_runner.py"),
@@ -174,19 +194,36 @@ class ModelAdapter(ABC):
             "--weight-path", weight["path"],
             "--input", image_path,
             "--output", output_path,
-            "--device", params.get("device", device or "cuda"),
-            "--precision", params.get("precision", precision or "fp32"),
+            "--device", run_device,
+            "--precision", run_precision,
         ]
         proc = subprocess.run(cmd, cwd=str(PROJECT_ROOT), text=True, capture_output=True, timeout=int(params.get("timeout_seconds", 240)))
         lines = [line for line in proc.stdout.splitlines() if line.strip()]
         payload = json.loads(lines[-1]) if lines else {"success": False, "error": proc.stderr.strip()}
         if proc.returncode != 0 or not payload.get("success"):
             raise RuntimeError(payload.get("error") or proc.stderr.strip() or "模型推理失败")
+        output_digest = file_sha256(output_path)
+        logs.extend([
+            f"Inference completed: runtime_ms={int(payload.get('runtime_ms', 0))}, peak_memory_mb={float(payload.get('peak_memory_mb', 0)):.2f}",
+            f"Output SHA256: {output_digest}",
+        ])
+        if proc.stderr.strip():
+            logs.append(proc.stderr.strip())
         return EnhancementResult(
             output_path=output_path,
             parameters={**params, "checkpoint_id": checkpoint_id, "runner": payload},
             runtime_ms=int(payload.get("runtime_ms", 0)),
             peak_memory_mb=float(payload.get("peak_memory_mb", 0)),
-            logs=[proc.stderr.strip()] if proc.stderr.strip() else [],
+            logs=logs,
+            is_mock=False,
+            adapter_class=self.__class__.__name__,
+            model_id=self.model_id,
+            checkpoint_id=checkpoint_id,
+            checkpoint_path=weight["path"],
+            checkpoint_sha256=checkpoint_digest,
+            device=run_device,
+            precision=run_precision,
+            input_sha256=input_digest,
+            output_sha256=output_digest,
         )
 

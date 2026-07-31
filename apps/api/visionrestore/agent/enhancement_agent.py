@@ -115,7 +115,16 @@ class EnhancementAgent:
                         parameters=result.parameters,
                         runtime_ms=result.runtime_ms,
                         peak_memory_mb=result.peak_memory_mb,
+                        is_mock=result.is_mock,
+                        adapter_class=result.adapter_class,
+                        checkpoint_path=result.checkpoint_path,
+                        checkpoint_sha256=result.checkpoint_sha256,
+                        device=result.device,
+                        precision=result.precision,
+                        input_sha256=result.input_sha256,
+                        output_sha256=result.output_sha256,
                     )
+                    logs.extend(result.logs)
                     task.candidates.append(cand)
                     first_completed = True
                     if index == 0 and len(run_list) > 1 and self._needs_fallback(metrics):

@@ -17,7 +17,12 @@ class Settings(BaseSettings):
     allowed_origins: str = Field("http://localhost:5173,http://127.0.0.1:5173", alias="ALLOWED_ORIGINS")
     default_device: str = Field("auto", alias="DEFAULT_DEVICE")
     default_precision: str = Field("fp32", alias="DEFAULT_PRECISION")
+    allow_mock_model: bool = Field(False, alias="ALLOW_MOCK_MODEL")
     allow_mock_models: bool = Field(False, alias="ALLOW_MOCK_MODELS")
+
+    @property
+    def mock_models_enabled(self) -> bool:
+        return self.allow_mock_model or self.allow_mock_models
 
     @property
     def data_dir(self) -> Path:

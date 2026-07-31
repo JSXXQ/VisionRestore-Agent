@@ -38,8 +38,11 @@ cd E:\codex_project\VisionRestore-Agent
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1
 ```
 
-网页：http://127.0.0.1:5173  
+前端页面：http://127.0.0.1:5173  
+本地 FastAPI：http://127.0.0.1:8000  
 API 文档：http://127.0.0.1:8000/docs
+
+默认工作流不需要任何云端 API Key。推理使用 `config/models.local.yaml` 指向的本地 PyTorch 环境、本地模型源码和本地权重；IntentParser 使用本地规则；LLM 路由默认未启用，只有未来显式配置后才会使用。
 
 停止：
 
@@ -89,5 +92,5 @@ npm.cmd run build --prefix apps\web
 ## 已知局限
 
 - 健康检查结果当前按请求返回，尚未持久化到每个 checkpoint 状态。
-- UI 已按参考图方向重做布局和背景，但拖动分割、同步缩放和平移仍需继续增强。
+- UI 已按参考图方向重做布局和背景，但拖动分割、同步缩放和平移仍可继续增强。
 - 自动化测试已覆盖核心链路，但尚未扩展到说明中列出的全部 20 类测试。

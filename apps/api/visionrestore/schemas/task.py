@@ -63,6 +63,14 @@ class CandidateResult(BaseModel):
     parameters: dict = Field(default_factory=dict)
     runtime_ms: int = 0
     peak_memory_mb: float = 0
+    is_mock: bool = False
+    adapter_class: str | None = None
+    checkpoint_path: str | None = None
+    checkpoint_sha256: str | None = None
+    device: str | None = None
+    precision: str | None = None
+    input_sha256: str | None = None
+    output_sha256: str | None = None
     error: str | None = None
 
 class TaskRecord(BaseModel):
