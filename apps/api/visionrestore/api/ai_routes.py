@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 from visionrestore.adapters.registry import ModelRegistry
 from visionrestore.ai.preview import create_ai_preview
-from visionrestore.ai.providers import AIProviderError, DisabledAnalysisProvider
+from visionrestore.ai.providers import AIProviderError, DisabledAnalysisProvider, is_image_input_unsupported_error
 from visionrestore.ai.registry import ProviderRegistry
 from visionrestore.ai.validation import validate_multimodal_result
 from visionrestore.core.config import PROJECT_ROOT, get_settings
@@ -214,6 +214,35 @@ def analyze(payload: AIAnalyzeRequest):
         )
         return ok({"analysis": result.model_dump(), "preview": preview})
     except AIProviderError as exc:
+        if image_preview is not None and is_image_input_unsupported_error(exc):
+            try:
+                result = provider.analyze(
+                    image_preview=None,
+                    image_metrics=image_metrics,
+                    user_request=payload.user_request,
+                    available_models=available_models,
+                    hardware_summary=hardware_summary,
+                    analysis_mode="text_only",
+                )
+                result.warnings = [
+                    "当前配置的模型不支持图像输入，已自动改用文字/本地指标 AI 分析。",
+                    *list(result.warnings or []),
+                ]
+                result = validate_multimodal_result(
+                    result,
+                    available_models=available_models,
+                    hardware_summary=hardware_summary,
+                    manual_model=payload.manual_model,
+                    manual_checkpoint=payload.manual_checkpoint,
+                )
+                result.local_validation = {
+                    **result.local_validation,
+                    "image_mode_retry": "downgraded_to_text_only",
+                    "image_mode_failure": exc.code,
+                }
+                return ok({"analysis": result.model_dump(), "preview": preview})
+            except AIProviderError as retry_exc:
+                exc = retry_exc
         if not settings.multimodal_fallback_to_local:
             raise HTTPException(status_code=503, detail={"code": exc.code, "message": exc.message})
         result = DisabledAnalysisProvider(settings).analyze(

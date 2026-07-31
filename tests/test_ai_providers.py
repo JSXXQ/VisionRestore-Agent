@@ -50,6 +50,10 @@ def test_ai_providers_endpoint_is_available_and_redacted():
 
 
 def test_ai_analyze_defaults_to_local_without_external_call(monkeypatch):
+    monkeypatch.setenv("MULTIMODAL_ANALYSIS_ENABLED", "false")
+    monkeypatch.setenv("MULTIMODAL_PROVIDER", "disabled")
+    get_settings.cache_clear()
+
     def fail_if_called(*args, **kwargs):
         raise AssertionError("external HTTP should not be called in default local mode")
 
@@ -66,6 +70,7 @@ def test_ai_analyze_defaults_to_local_without_external_call(monkeypatch):
     assert data["provider"] == "disabled"
     assert data["fallback_used"] is True
     assert data["sent_image"] is False
+    get_settings.cache_clear()
 
 
 def test_structured_result_rejects_invalid_checkpoint():
@@ -176,6 +181,54 @@ def test_low_scene_confidence_uses_unknown_and_general_retinexformer_weight():
     assert all(item.checkpoint_id != "sdsd_outdoor" for item in validated.checkpoint_candidates)
 
 
+def test_health_check_detects_text_model_when_image_mode_enabled(monkeypatch):
+    monkeypatch.setenv("MULTIMODAL_SEND_IMAGE", "true")
+    monkeypatch.setenv("OPENAI_COMPATIBLE_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_COMPATIBLE_MODEL", "deepseek-ai/DeepSeek-V3.2")
+    monkeypatch.setenv("OPENAI_COMPATIBLE_BASE_URL", "https://example.test/v1")
+    get_settings.cache_clear()
+    calls = {"count": 0}
+
+    def fake_post(*args, **kwargs):
+        calls["count"] += 1
+        messages = kwargs["json"]["messages"]
+        if isinstance(messages[1]["content"], list):
+            class ImageRejected:
+                status_code = 400
+                text = '{"code":20041,"message":"The model is not a VLM (Vision Language Model). Please use text-only prompts.","data":null}'
+
+                def json(self):
+                    return {}
+
+            return ImageRejected()
+
+        class TextAccepted:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {"choices": [{"message": {"content": '{"ok":true}'}}]}
+
+        return TextAccepted()
+
+    monkeypatch.setattr("requests.post", fake_post)
+    provider = OpenAICompatibleAnalysisProvider(
+        get_settings(),
+        provider_id="openai_compatible",
+        display_name="OpenAI-compatible",
+        key_attr="openai_compatible_api_key",
+        model_attr="openai_compatible_model",
+        base_url_attr="openai_compatible_base_url",
+        default_base_url="",
+    )
+    health = provider.health_check(run_remote=True)
+    assert calls["count"] == 2
+    assert health.healthy is False
+    assert health.error_code == "AI_PROVIDER_MODEL_NOT_VLM"
+    monkeypatch.undo()
+    get_settings.cache_clear()
+
+
 def test_prompt_injection_image_text_cannot_choose_nonexistent_model(monkeypatch):
     monkeypatch.setenv("MULTIMODAL_ANALYSIS_ENABLED", "true")
     monkeypatch.setenv("MULTIMODAL_PROVIDER", "openai_compatible")
@@ -220,5 +273,86 @@ def test_prompt_injection_image_text_cannot_choose_nonexistent_model(monkeypatch
     assert "AI_PROVIDER_INVALID_RESPONSE" in analysis["validation_errors"]
     assert "made_up_model" not in str(analysis)
     assert "test-key" not in str(analysis)
+    monkeypatch.undo()
+    get_settings.cache_clear()
+
+
+def test_multimodal_non_vlm_model_downgrades_to_text_only_ai(monkeypatch):
+    monkeypatch.setenv("MULTIMODAL_ANALYSIS_ENABLED", "true")
+    monkeypatch.setenv("MULTIMODAL_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("MULTIMODAL_SEND_IMAGE", "true")
+    monkeypatch.setenv("OPENAI_COMPATIBLE_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_COMPATIBLE_MODEL", "deepseek-ai/DeepSeek-V3.2")
+    monkeypatch.setenv("OPENAI_COMPATIBLE_BASE_URL", "https://example.test/v1")
+    get_settings.cache_clear()
+
+    class FakeModelRegistry:
+        def list(self):
+            return [{
+                "model_id": "retinexformer",
+                "available": True,
+                "supported_devices": ["cuda"],
+                "capabilities": {"weights": [
+                    {"checkpoint_id": "lol_v2_real", "status": "found", "exists": True, "health_check": "not_run"},
+                ]},
+            }]
+
+    class FakeHardwareInspector:
+        def inspect(self):
+            return {"cuda_available": True, "gpu_memory_mb": 8192}
+
+    def fake_post(*args, **kwargs):
+        messages = kwargs["json"]["messages"]
+        if isinstance(messages[1]["content"], list):
+            class ImageRejected:
+                status_code = 400
+                text = '{"code":20041,"message":"The model is not a VLM (Vision Language Model). Please use text-only prompts.","data":null}'
+
+                def json(self):
+                    return {}
+
+            return ImageRejected()
+
+        class TextAccepted:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {
+                    "choices": [{
+                        "message": {
+                            "content": (
+                                '{"scene":"unknown","subscene":"","scene_confidence":0.2,'
+                                '"main_subjects":[],"important_light_sources":[],"critical_regions":[],'
+                                '"interpreted_intent":["natural low-light enhancement"],'
+                                '"model_candidates":[{"model_id":"retinexformer","score":80,"reason":"quality request"}],'
+                                '"checkpoint_candidates":[{"model_id":"retinexformer","checkpoint_id":"lol_v2_real","score":70,"reason":"general low-light default"}],'
+                                '"reasoning_summary":"Text-only semantic advice based on local metrics.","warnings":[],"confidence":0.8}'
+                            )
+                        }
+                    }]
+                }
+
+        return TextAccepted()
+
+    monkeypatch.setattr("requests.post", fake_post)
+    monkeypatch.setattr("visionrestore.api.ai_routes.ModelRegistry", lambda: FakeModelRegistry())
+    monkeypatch.setattr("visionrestore.api.ai_routes.HardwareInspector", lambda: FakeHardwareInspector())
+    client = TestClient(app)
+    image_id = _upload_image(client)
+    res = client.post("/api/v1/ai/analyze", json={
+        "image_id": image_id,
+        "user_request": "自然增强暗部",
+        "analysis_mode": "multimodal",
+    })
+    assert res.status_code == 200
+    analysis = res.json()["data"]["analysis"]
+    assert analysis["provider"] == "openai_compatible"
+    assert analysis["model"] == "deepseek-ai/DeepSeek-V3.2"
+    assert analysis["analysis_mode"] == "text_only"
+    assert analysis["sent_image"] is False
+    assert analysis["adopted"] is True
+    assert analysis["local_validation"]["image_mode_retry"] == "downgraded_to_text_only"
+    assert "不支持图像输入" in " ".join(analysis["warnings"])
     monkeypatch.undo()
     get_settings.cache_clear()

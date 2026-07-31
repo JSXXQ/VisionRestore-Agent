@@ -1,4 +1,5 @@
 import base64
+import io
 import json
 import time
 from abc import ABC, abstractmethod
@@ -10,12 +11,22 @@ import requests
 from visionrestore.ai.prompts import multimodal_analysis_prompt, multimodal_system_prompt
 from visionrestore.schemas.ai import MultimodalAnalysisResult, ProviderHealth, ProviderStatus
 
-
 class AIProviderError(RuntimeError):
     def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+def is_image_input_unsupported_error(exc: AIProviderError) -> bool:
+    text = f"{exc.code} {exc.message}".lower()
+    return (
+        exc.code == "AI_PROVIDER_MODEL_NOT_VLM"
+        or "not a vlm" in text
+        or "text-only" in text
+        or "does not support image" in text
+        or "image input" in text and "not" in text
+    )
 
 
 class MultimodalAnalysisProvider(ABC):
@@ -200,6 +211,14 @@ class OpenAICompatibleAnalysisProvider(MultimodalAnalysisProvider):
                 {"role": "system", "content": "Return only JSON."},
                 {"role": "user", "content": "Return {\"ok\": true}."},
             ], timeout=min(self.settings.multimodal_timeout_seconds, 10))
+            if self.settings.multimodal_send_image:
+                self._chat_completion([
+                    {"role": "system", "content": "Return only JSON."},
+                    {"role": "user", "content": [
+                        {"type": "text", "text": "Return {\"ok\": true}. This checks whether the configured model accepts image input."},
+                        {"type": "image_url", "image_url": {"url": _tiny_jpeg_data_url()}},
+                    ]},
+                ], timeout=min(self.settings.multimodal_timeout_seconds, 10))
             return ProviderHealth(
                 provider_id=self.provider_id,
                 implemented=True,
@@ -274,7 +293,13 @@ class OpenAICompatibleAnalysisProvider(MultimodalAnalysisProvider):
         if response.status_code in {401, 403}:
             raise AIProviderError("AI_PROVIDER_AUTH_FAILED", "Provider authentication failed")
         if response.status_code >= 400:
-            raise AIProviderError("AI_PROVIDER_UNAVAILABLE", f"Provider returned HTTP {response.status_code}: {response.text[:300]}")
+            body = response.text[:300]
+            code = "AI_PROVIDER_UNAVAILABLE"
+            if response.status_code == 402:
+                code = "AI_PROVIDER_BILLING_REQUIRED"
+            if _looks_like_image_unsupported(body):
+                code = "AI_PROVIDER_MODEL_NOT_VLM"
+            raise AIProviderError(code, f"Provider returned HTTP {response.status_code}: {body}")
         try:
             data = response.json()
             return data["choices"][0]["message"]["content"]
@@ -315,3 +340,21 @@ class OpenAICompatibleAnalysisProvider(MultimodalAnalysisProvider):
             + "\n\nJSON_CONTEXT:\n"
             + json.dumps(context, ensure_ascii=False)
         )
+
+
+def _looks_like_image_unsupported(text: str) -> bool:
+    lowered = text.lower()
+    return (
+        "not a vlm" in lowered
+        or "text-only" in lowered
+        or "does not support image" in lowered
+        or ("image" in lowered and "not support" in lowered)
+    )
+
+
+def _tiny_jpeg_data_url() -> str:
+    from PIL import Image
+
+    bio = io.BytesIO()
+    Image.new("RGB", (1, 1), (18, 18, 22)).save(bio, format="JPEG", quality=80)
+    return "data:image/jpeg;base64," + base64.b64encode(bio.getvalue()).decode("ascii")
