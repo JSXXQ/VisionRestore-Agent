@@ -693,6 +693,51 @@ input {
   margin-top: 12px;
 }
 
+.api-test-result {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(83, 130, 217, .28);
+  border-radius: 8px;
+  background: rgba(6, 17, 37, .52);
+}
+
+.api-test-result.ok {
+  border-color: rgba(85, 228, 174, .45);
+}
+
+.api-test-result.warn {
+  border-color: rgba(255, 191, 95, .45);
+}
+
+.api-test-result div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.api-test-result strong {
+  color: #eaf1ff;
+}
+
+.api-test-result span,
+.api-test-result p {
+  color: #9fb2d0;
+}
+
+.api-test-result p {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.api-test-result em {
+  color: #ffbf5f;
+  font-style: normal;
+}
+
 .info-row {
   display: grid;
   grid-template-columns: minmax(110px, .8fr) minmax(0, 1.4fr) auto;

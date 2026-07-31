@@ -162,6 +162,17 @@ type AIProviderStatus = {
   error_code?: string;
 };
 
+type AIProviderHealth = {
+  provider_id: string;
+  implemented: boolean;
+  configured: boolean;
+  healthy: boolean;
+  supports_image: boolean;
+  current_model?: string;
+  last_error?: string;
+  error_code?: string;
+};
+
 type AIModelSuggestion = {
   model_id: string;
   score: number;
@@ -1066,6 +1077,8 @@ function SettingsPage({ system, models, aiSettings, aiProviders, refresh, setNot
   const [apiKey, setApiKey] = useState("");
   const [sendImage, setSendImage] = useState(Boolean(aiSettings?.send_image));
   const [saving, setSaving] = useState(false);
+  const [testingApi, setTestingApi] = useState(false);
+  const [apiTestResult, setApiTestResult] = useState<AIProviderHealth | null>(null);
   useEffect(() => {
     setProvider(aiSettings?.provider || "disabled");
     setEnabled(Boolean(aiSettings?.enabled));
@@ -1113,6 +1126,30 @@ function SettingsPage({ system, models, aiSettings, aiProviders, refresh, setNot
       setSaving(false);
     }
   };
+  const testAiProvider = async () => {
+    setTestingApi(true);
+    setNotice("");
+    setApiTestResult(null);
+    try {
+      const result = await api<AIProviderHealth>(`/api/v1/ai/providers/${provider}/health-check`, { method: "POST" });
+      setApiTestResult(result);
+      setNotice(result.healthy ? "API 检测通过。" : `API 检测未通过：${result.error_code || result.last_error || "未知错误"}`);
+      refresh();
+    } catch (err) {
+      setApiTestResult({
+        provider_id: provider,
+        implemented: false,
+        configured: false,
+        healthy: false,
+        supports_image: false,
+        last_error: String(err),
+        error_code: "HEALTH_CHECK_REQUEST_FAILED",
+      });
+      setNotice(String(err));
+    } finally {
+      setTestingApi(false);
+    }
+  };
   return (
     <section className="page-panel" id="system-settings">
       <div className="panel-title"><h2>系统设置</h2><span className="tag ok">本地 FastAPI</span></div>
@@ -1133,8 +1170,21 @@ function SettingsPage({ system, models, aiSettings, aiProviders, refresh, setNot
           <InfoRow label="支持图像" value={selectedStatus?.supports_image ? "支持" : "不支持"} />
           <InfoRow label="当前模型" value={selectedStatus?.current_model || "未设置"} />
         </div>
+        {apiTestResult && (
+          <div className={`api-test-result ${apiTestResult.healthy ? "ok" : "warn"}`}>
+            <div>
+              <strong>{apiTestResult.healthy ? "接口检测通过" : "接口检测未通过"}</strong>
+              <span>{apiTestResult.provider_id} / {apiTestResult.current_model || selectedStatus?.current_model || "未设置模型"}</span>
+            </div>
+            <p>{apiTestResult.healthy ? "当前 API Key、模型名和接口地址可以正常访问。" : apiTestResult.last_error || apiTestResult.error_code || "供应商返回了异常状态。"}</p>
+            {apiTestResult.error_code && <em>{apiTestResult.error_code}</em>}
+          </div>
+        )}
         <p className="note-line">Key 只会写入本机 `.env`；前端和 API 响应不会读取或回显完整 Key。多模态模式只发送缩略预览图，原图仍只用于本地增强。</p>
-        <div className="action-row compact"><button className="primary-action" onClick={saveAi} disabled={saving}>{saving ? "保存中" : "保存 API 配置"}</button></div>
+        <div className="action-row compact">
+          <button className="primary-action" onClick={saveAi} disabled={saving}>{saving ? "保存中" : "保存 API 配置"}</button>
+          <button onClick={testAiProvider} disabled={testingApi || provider === "disabled"}>{testingApi ? "检测中" : "检测 API 接口"}</button>
+        </div>
       </div>
     </section>
   );
