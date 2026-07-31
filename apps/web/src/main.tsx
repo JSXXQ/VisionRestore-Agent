@@ -162,6 +162,19 @@ type AIProviderStatus = {
   error_code?: string;
 };
 
+type AIModelSuggestion = {
+  model_id: string;
+  score: number;
+  reason: string;
+};
+
+type AICheckpointSuggestion = {
+  model_id: string;
+  checkpoint_id: string;
+  score: number;
+  reason: string;
+};
+
 type AIAnalysis = {
   provider: string;
   model: string;
@@ -172,11 +185,19 @@ type AIAnalysis = {
   important_light_sources: string[];
   critical_regions: string[];
   interpreted_intent: string[];
+  model_candidates: AIModelSuggestion[];
+  checkpoint_candidates: AICheckpointSuggestion[];
   reasoning_summary: string;
   warnings: string[];
   confidence: number;
   fallback_used: boolean;
   failure_reason?: string;
+  validation_passed: boolean;
+  validation_errors: string[];
+  local_validation: Record<string, unknown>;
+  adopted: boolean;
+  adoption_reason: string;
+  rejection_reason?: string;
   analysis_mode: AnalysisMode;
   sent_image: boolean;
   runtime_ms: number;
@@ -347,6 +368,8 @@ function App() {
         image_id: id,
         user_request: goal,
         analysis_mode: analysisMode,
+        manual_model: mode === "manual" ? model : undefined,
+        manual_checkpoint: mode === "manual" ? checkpoint : undefined,
       }),
     });
     setAiAnalysis(response.analysis);
@@ -626,7 +649,7 @@ function DecisionCenter({ task, analysis, intent, goal, models, aiAnalysis, anal
       </div>
       <AnalysisCard analysis={analysis} />
       <IntentCard intent={intent} goal={goal} />
-      <SemanticCard aiAnalysis={aiAnalysis} analysisMode={analysisMode} aiProviders={aiProviders} aiSettings={aiSettings} />
+      <SafeSemanticCard aiAnalysis={aiAnalysis} analysisMode={analysisMode} aiProviders={aiProviders} aiSettings={aiSettings} />
       <RouteCard title="模型架构路由" items={task?.model_candidates || []} selected={task?.plan?.selected_model} kind="model" />
       <WeightRouteCard items={task?.checkpoint_candidates || []} selected={task?.plan?.selected_checkpoint} />
       <TimelineCard task={task} />
@@ -715,6 +738,78 @@ function SemanticCard({ aiAnalysis, analysisMode, aiProviders, aiSettings }: { a
       <div className="tag-row">{tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div>
       <p className="evidence">{aiAnalysis.reasoning_summary || "本地统计分析无法可靠识别复杂场景语义。"}</p>
       {!!aiAnalysis.warnings?.length && <p className="note-line">{aiAnalysis.warnings.join(" / ")}</p>}
+      {aiAnalysis.fallback_used && <span className="tag warn">已回退本地规则</span>}
+    </Card>
+  );
+}
+
+function SafeSemanticCard({ aiAnalysis, analysisMode, aiProviders, aiSettings }: { aiAnalysis: AIAnalysis | null; analysisMode: AnalysisMode; aiProviders: AIProviderStatus[]; aiSettings: AISettings | null }) {
+  const activeProvider = aiProviders.find((item) => item.provider_id === aiSettings?.provider);
+  const modeText = analysisMode === "local" ? "纯本地分析" : analysisMode === "text_only" ? "文字 AI 分析" : "多模态 AI 分析";
+  if (!aiAnalysis) {
+    return (
+      <Card title="多模态语义" icon={<Brain />}>
+        <div className="ai-status">
+          <InfoRow label="分析方式" value={modeText} />
+          <InfoRow label="AI 提供商" value={activeProvider?.display_name || "disabled"} />
+          <InfoRow label="状态" value={aiSettings?.enabled ? "等待分析" : "当前使用本地规则"} />
+        </div>
+        {!aiSettings?.enabled && <p className="note-line">多模态 API 未启用；不会发送图像或文字到外部 API。</p>}
+      </Card>
+    );
+  }
+  const tags = [
+    aiAnalysis.scene && `场景：${aiAnalysis.scene}`,
+    aiAnalysis.subscene && `子场景：${aiAnalysis.subscene}`,
+    ...aiAnalysis.main_subjects.slice(0, 3).map((item) => `主体：${item}`),
+    ...aiAnalysis.important_light_sources.slice(0, 3).map((item) => `光源：${item}`),
+    ...aiAnalysis.critical_regions.slice(0, 3).map((item) => `高风险：${item}`),
+  ].filter(Boolean);
+  const suggestions = [
+    ...(aiAnalysis.model_candidates || []).slice(0, 2).map((item) => ({
+      id: item.model_id,
+      title: modelName(item.model_id),
+      meta: "模型建议",
+      score: item.score,
+      reason: item.reason,
+    })),
+    ...(aiAnalysis.checkpoint_candidates || []).slice(0, 3).map((item) => ({
+      id: `${item.model_id}-${item.checkpoint_id}`,
+      title: `${modelName(item.model_id)} / ${checkpointName(item.checkpoint_id)}`,
+      meta: "权重建议",
+      score: item.score,
+      reason: item.reason,
+    })),
+  ];
+  const validationRows: Array<[string, React.ReactNode, React.ReactNode?]> = [
+    ["本地校验", aiAnalysis.validation_passed ? "通过" : "未通过", aiAnalysis.validation_passed ? "可作为建议" : "已回退"],
+    ["最终采纳", aiAnalysis.adopted ? "采纳为有限加分依据" : "未采纳", aiAnalysis.adopted ? `最多 +${String(aiAnalysis.local_validation?.semantic_bonus_max ?? 20)} 分` : "本地规则优先"],
+    ["未采纳原因", aiAnalysis.rejection_reason || aiAnalysis.failure_reason || "-", aiAnalysis.fallback_used ? "回退已生效" : undefined],
+  ];
+  return (
+    <Card title="多模态语义" icon={<Brain />}>
+      <div className="metric-grid">
+        <Metric label="分析方式" value={modeText} />
+        <Metric label="提供商/模型" value={`${aiAnalysis.provider} / ${aiAnalysis.model}`} />
+        <Metric label="是否发图" value={aiAnalysis.sent_image ? "发送缩略预览" : "未发送图像"} />
+        <Metric label="判断置信度" value={fmt(aiAnalysis.scene_confidence, 2)} />
+      </div>
+      <div className="tag-row">{tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div>
+      <div className="semantic-suggestions">
+        {suggestions.length ? suggestions.map((item) => (
+          <div className="suggestion-row" key={item.id}>
+            <span>{item.meta}</span>
+            <b>{item.title}</b>
+            <em>{fmt(item.score, 1)}</em>
+            <small>{item.reason || "来自多模态语义建议"}</small>
+          </div>
+        )) : <EmptyText text="暂无可展示的大模型建议。" />}
+      </div>
+      <div className="validation-grid">{validationRows.map(([label, value, tone]) => <InfoRow key={label} label={label} value={value} tone={tone} />)}</div>
+      {!!aiAnalysis.validation_errors?.length && <p className="note-line">校验记录：{aiAnalysis.validation_errors.join(" / ")}</p>}
+      <p className="evidence">{aiAnalysis.reasoning_summary || "本地统计分析无法可靠识别复杂场景语义。"}</p>
+      {!!aiAnalysis.warnings?.length && <p className="note-line">{aiAnalysis.warnings.join(" / ")}</p>}
+      <p className="note-line">多模态结果只作为受限建议展示，最终执行仍以本地模型注册、权重状态、硬件检查和路由规则为准。</p>
       {aiAnalysis.fallback_used && <span className="tag warn">已回退本地规则</span>}
     </Card>
   );

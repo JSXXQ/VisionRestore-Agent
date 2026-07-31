@@ -6,6 +6,7 @@ from visionrestore.adapters.registry import ModelRegistry
 from visionrestore.ai.preview import create_ai_preview
 from visionrestore.ai.providers import AIProviderError, DisabledAnalysisProvider
 from visionrestore.ai.registry import ProviderRegistry
+from visionrestore.ai.validation import validate_multimodal_result
 from visionrestore.core.config import PROJECT_ROOT, get_settings
 from visionrestore.schemas.ai import AIAnalyzeRequest, AIProviderConfigUpdate, AISettingsPublic, AISettingsUpdate
 from visionrestore.schemas.common import ok
@@ -183,6 +184,13 @@ def analyze(payload: AIAnalyzeRequest):
         if payload.analysis_mode != "local" and not settings.multimodal_analysis_enabled:
             result.failure_reason = "MULTIMODAL_ANALYSIS_DISABLED"
             result.warnings = ["多模态 AI 未启用，已回退本地规则分析。"]
+        result.validation_passed = True
+        result.local_validation = {
+            "external_provider": "not_used",
+            "final_authority": "local_rules",
+        }
+        result.adopted = False
+        result.rejection_reason = "NO_EXTERNAL_MULTIMODAL_ADVICE"
         return ok({"analysis": result.model_dump(), "preview": None})
     preview = None
     image_preview = None
@@ -197,6 +205,13 @@ def analyze(payload: AIAnalyzeRequest):
             hardware_summary=hardware_summary,
             analysis_mode=payload.analysis_mode,
         )
+        result = validate_multimodal_result(
+            result,
+            available_models=available_models,
+            hardware_summary=hardware_summary,
+            manual_model=payload.manual_model,
+            manual_checkpoint=payload.manual_checkpoint,
+        )
         return ok({"analysis": result.model_dump(), "preview": preview})
     except AIProviderError as exc:
         if not settings.multimodal_fallback_to_local:
@@ -210,6 +225,15 @@ def analyze(payload: AIAnalyzeRequest):
             analysis_mode=payload.analysis_mode,
         )
         result.failure_reason = exc.code
+        result.validation_passed = False
+        result.validation_errors = [exc.code]
+        result.local_validation = {
+            "json_parse": "failed" if exc.code == "AI_PROVIDER_INVALID_RESPONSE" else "not_reached",
+            "pydantic_schema": "failed" if exc.code == "AI_PROVIDER_INVALID_RESPONSE" else "not_reached",
+            "fallback": "local_rules",
+        }
+        result.adopted = False
+        result.rejection_reason = exc.code
         result.warnings = [f"多模态 AI 调用失败，已回退本地规则分析：{exc.message}"]
         return ok({"analysis": result.model_dump(), "preview": preview})
 

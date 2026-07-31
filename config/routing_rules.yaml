@@ -7,6 +7,10 @@
   zero_dce_manual_bonus: 30
   zero_dce_fallback_bonus: 10
   sufficient_gpu_memory_mb: 6000
+multimodal_routing:
+  semantic_bonus_max: 20
+  scene_confidence_threshold: 0.65
+  minimum_overall_confidence: 0.55
 retinexformer_weights:
   unknown: [lol_v2_real, ntire, sdsd_outdoor, sdsd_indoor]
   indoor: [sdsd_indoor, lol_v2_real, ntire, sdsd_outdoor]

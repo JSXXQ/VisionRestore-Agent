@@ -616,6 +616,48 @@ input {
   gap: 8px;
 }
 
+.semantic-suggestions,
+.validation-grid {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.suggestion-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 48px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid rgba(83, 130, 217, .24);
+  border-radius: 7px;
+  background: rgba(6, 17, 37, .5);
+}
+
+.suggestion-row span {
+  color: #8fa8d7;
+  font-size: 12px;
+}
+
+.suggestion-row b {
+  color: #eaf1ff;
+  font-size: 13px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.suggestion-row em {
+  color: #55e4ae;
+  font-style: normal;
+  text-align: right;
+}
+
+.suggestion-row small {
+  grid-column: 1 / -1;
+  color: #8ea2c2;
+  line-height: 1.45;
+}
+
 .settings-grid {
   grid-template-columns: repeat(2, minmax(280px, 1fr));
 }

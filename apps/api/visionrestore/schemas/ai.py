@@ -67,6 +67,12 @@ class MultimodalAnalysisResult(BaseModel):
     confidence: float = 0
     fallback_used: bool = False
     failure_reason: str | None = None
+    validation_passed: bool = False
+    validation_errors: list[str] = Field(default_factory=list)
+    local_validation: dict = Field(default_factory=dict)
+    adopted: bool = False
+    adoption_reason: str = ""
+    rejection_reason: str | None = None
     analysis_mode: AnalysisMode = "local"
     sent_image: bool = False
     runtime_ms: int = 0
@@ -77,6 +83,8 @@ class AIAnalyzeRequest(BaseModel):
     user_request: str = ""
     analysis_mode: AnalysisMode = "local"
     provider_id: str | None = None
+    manual_model: str | None = None
+    manual_checkpoint: str | None = None
 
 
 class AISettingsPublic(BaseModel):
