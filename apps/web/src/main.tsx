@@ -186,6 +186,11 @@ type AISettings = {
   enabled: boolean;
   provider: string;
   send_image: boolean;
+  send_metrics: boolean;
+  fallback_to_local: boolean;
+  image_max_edge: number;
+  image_quality: number;
+  timeout_seconds: number;
   providers: Record<string, { configured: boolean; healthy: boolean; implemented: boolean; supports_image: boolean; current_model?: string }>;
 };
 
@@ -441,7 +446,7 @@ function App() {
         )}
         {view === "models" && <ModelsPage models={models} refresh={refresh} />}
         {view === "history" && <HistoryPage history={history} />}
-        {view === "settings" && <SettingsPage system={system} models={models} />}
+        {view === "settings" && <SettingsPage system={system} models={models} aiSettings={aiSettings} aiProviders={aiProviders} refresh={refresh} setNotice={setNotice} />}
       </main>
       {notice && <div className="toast">{notice}</div>}
     </div>
@@ -956,9 +961,21 @@ function HistoryPage({ history }: { history: Task[] }) {
   );
 }
 
-function SettingsPage({ system, models }: { system: SystemInfo | null; models: ModelStatus[] }) {
+function SettingsPage({ system, models, aiSettings, aiProviders, refresh, setNotice }: { system: SystemInfo | null; models: ModelStatus[]; aiSettings: AISettings | null; aiProviders: AIProviderStatus[]; refresh: () => void; setNotice: (value: string) => void }) {
   const hw = system?.hardware || {};
   const settings = system?.settings || {};
+  const [provider, setProvider] = useState(aiSettings?.provider || "disabled");
+  const [enabled, setEnabled] = useState(Boolean(aiSettings?.enabled));
+  const [model, setModel] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [sendImage, setSendImage] = useState(Boolean(aiSettings?.send_image));
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    setProvider(aiSettings?.provider || "disabled");
+    setEnabled(Boolean(aiSettings?.enabled));
+    setSendImage(Boolean(aiSettings?.send_image));
+  }, [aiSettings?.provider, aiSettings?.enabled, aiSettings?.send_image]);
   const rows = [
     ["操作系统", String(hw.platform || "-")],
     ["API Python", String(hw.python || "-")],
@@ -974,7 +991,58 @@ function SettingsPage({ system, models }: { system: SystemInfo | null; models: M
     ["LLM", "未启用"],
     ["可用模型", String(models.filter((item) => item.available).length)],
   ];
-  return <section className="page-panel" id="system-settings"><div className="panel-title"><h2>系统设置</h2><span className="tag ok">本地 FastAPI</span></div><div className="settings-grid">{rows.map(([label, value]) => <InfoRow key={label} label={label} value={value} />)}</div></section>;
+  const selectedStatus = aiProviders.find((item) => item.provider_id === provider);
+  const saveAi = async () => {
+    setSaving(true);
+    setNotice("");
+    try {
+      await api<AISettings>(`/api/v1/ai/providers/${provider}/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled,
+          model,
+          base_url: baseUrl,
+          api_key: apiKey,
+          send_image: sendImage,
+          send_metrics: true,
+          fallback_to_local: true,
+        }),
+      });
+      setApiKey("");
+      setNotice("多模态 API 配置已保存；后端已刷新本地配置。");
+      refresh();
+    } catch (err) {
+      setNotice(String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <section className="page-panel" id="system-settings">
+      <div className="panel-title"><h2>系统设置</h2><span className="tag ok">本地 FastAPI</span></div>
+      <div className="settings-grid">{rows.map(([label, value]) => <InfoRow key={label} label={label} value={value} />)}</div>
+      <div className="settings-section">
+        <div className="panel-title"><h2>多模态 API 配置</h2><span className={aiSettings?.enabled ? "tag ok" : "tag warn"}>{aiSettings?.enabled ? "已启用" : "纯本地默认"}</span></div>
+        <div className="api-config-grid">
+          <label><span>启用外部语义分析</span><select value={enabled ? "true" : "false"} onChange={(e) => setEnabled(e.target.value === "true")}><option value="false">关闭，使用纯本地规则</option><option value="true">开启，可选择供应商</option></select></label>
+          <label><span>供应商</span><select value={provider} onChange={(e) => setProvider(e.target.value)}>{aiProviders.map((item) => <option key={item.provider_id} value={item.provider_id}>{item.display_name}</option>)}</select></label>
+          <label><span>模型名</span><input value={model} placeholder={selectedStatus?.current_model || "例如 gpt-4o / qwen-vl / vendor-model"} onChange={(e) => setModel(e.target.value)} /></label>
+          <label><span>Base URL</span><input value={baseUrl} placeholder={provider === "openai" ? "默认 https://api.openai.com/v1" : "兼容接口地址，例如 https://api.xxx.com/v1"} onChange={(e) => setBaseUrl(e.target.value)} disabled={provider === "anthropic" || provider === "gemini" || provider === "disabled"} /></label>
+          <label><span>API Key</span><input value={apiKey} type="password" placeholder={selectedStatus?.configured ? "已配置；留空则不修改" : "仅写入本机 .env，不会回显"} onChange={(e) => setApiKey(e.target.value)} disabled={provider === "disabled"} /></label>
+          <label><span>发送图像</span><select value={sendImage ? "true" : "false"} onChange={(e) => setSendImage(e.target.value === "true")}><option value="false">不发送图像，只发文字和指标</option><option value="true">发送去元数据缩略预览图</option></select></label>
+        </div>
+        <div className="provider-status-grid">
+          <InfoRow label="当前状态" value={selectedStatus?.configured ? "已配置" : "未配置"} tone={selectedStatus?.healthy ? "健康" : selectedStatus?.error_code || "未检测"} />
+          <InfoRow label="接口实现" value={selectedStatus?.implemented ? "已实现" : "预留接口"} />
+          <InfoRow label="支持图像" value={selectedStatus?.supports_image ? "支持" : "不支持"} />
+          <InfoRow label="当前模型" value={selectedStatus?.current_model || "未设置"} />
+        </div>
+        <p className="note-line">Key 只会写入本机 `.env`；前端和 API 响应不会读取或回显完整 Key。多模态模式只发送缩略预览图，原图仍只用于本地增强。</p>
+        <div className="action-row compact"><button className="primary-action" onClick={saveAi} disabled={saving}>{saving ? "保存中" : "保存 API 配置"}</button></div>
+      </div>
+    </section>
+  );
 }
 
 function Card({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {

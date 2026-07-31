@@ -104,3 +104,15 @@ class AISettingsUpdate(BaseModel):
     max_retries: int | None = None
     fallback_to_local: bool | None = None
     remove_metadata: bool | None = None
+
+
+class AIProviderConfigUpdate(BaseModel):
+    enabled: bool | None = None
+    provider: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    clear_api_key: bool = False
+    send_image: bool | None = None
+    send_metrics: bool | None = None
+    fallback_to_local: bool | None = None

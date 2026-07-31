@@ -70,7 +70,8 @@ p {
 }
 
 select,
-textarea {
+textarea,
+input {
   width: 100%;
   color: #eaf2ff;
   background: rgba(4, 12, 27, .72);
@@ -87,6 +88,11 @@ textarea {
 }
 
 select {
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+input {
   min-height: 38px;
   padding: 8px 10px;
 }
@@ -612,6 +618,37 @@ select {
 
 .settings-grid {
   grid-template-columns: repeat(2, minmax(280px, 1fr));
+}
+
+.settings-section {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid rgba(83, 130, 217, .28);
+  border-radius: 8px;
+  background: rgba(8, 20, 44, .48);
+}
+
+.api-config-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.api-config-grid label {
+  display: grid;
+  gap: 7px;
+}
+
+.api-config-grid label > span {
+  color: #93a8c8;
+  font-size: 13px;
+}
+
+.provider-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .info-row {

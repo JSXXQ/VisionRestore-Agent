@@ -83,6 +83,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_smoke_test.ps1
 
 这些接口不会把完整 API Key 返回给前端；未启用或未配置时会回退到本地规则分析。
 
+也可以在前端“系统设置”页直接配置多模态 API。Key 只写入本机 `.env`，页面刷新或接口响应只显示是否已配置，不回显完整密钥。
+
 ## 评价指标
 
 第一版没有 GT 上传，因此不计算 PSNR、SSIM 或 LPIPS。系统只显示无参考指标：亮度变化、暗像素变化、过曝变化、对比度、动态范围、清晰度、噪声、色偏、熵、结构保持估计、耗时、显存和文件大小。
