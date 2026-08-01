@@ -8,6 +8,7 @@ from visionrestore.core.config import PROJECT_ROOT
 CONFIG_DIR = PROJECT_ROOT / "config"
 LOCAL_MODELS = CONFIG_DIR / "models.local.yaml"
 ROUTING_RULES = CONFIG_DIR / "routing_rules.yaml"
+SCORING_RULES = CONFIG_DIR / "scoring_rules.yaml"
 
 
 class WeightProfile(BaseModel):
@@ -52,6 +53,11 @@ def get_model_config() -> dict:
 @lru_cache
 def get_routing_rules() -> dict:
     return _read_yaml(ROUTING_RULES)
+
+
+@lru_cache
+def get_scoring_rules() -> dict:
+    return _read_yaml(SCORING_RULES)
 
 
 def external_python() -> str:

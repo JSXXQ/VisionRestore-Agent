@@ -1,0 +1,28 @@
+﻿weights:
+  quality:
+    technical_quality: 0.40
+    no_reference_iqa: 0.30
+    user_match: 0.25
+    runtime_cost: 0.05
+  balanced:
+    technical_quality: 0.35
+    no_reference_iqa: 0.25
+    user_match: 0.20
+    runtime_cost: 0.20
+  speed:
+    technical_quality: 0.25
+    no_reference_iqa: 0.15
+    user_match: 0.10
+    runtime_cost: 0.50
+hard_validity:
+  min_mean_luminance: 1
+  max_overexposed_ratio: 0.45
+  max_color_cast_index: 0.75
+  min_structure_keep: 0.35
+runtime_cost:
+  max_runtime_ms: 30000
+  max_peak_memory_mb: 12000
+iqa:
+  enabled: false
+  metrics: [topiq_nr, musiq, clipiqa, niqe, brisque]
+  missing_policy: ignore_metric

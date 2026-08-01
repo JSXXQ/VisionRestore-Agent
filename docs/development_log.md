@@ -251,3 +251,10 @@ Known gaps:
 - Added `CandidatePlanner` and candidate plan schemas. The planner enforces candidate budgets: speed=1, balanced=2, quality/compare=3, honors manual choices, and marks all candidates as `original_input_only`.
 - Added tests for honest model status and candidate planning behavior.
 - Verification: `.\.venv\Scripts\python -m pytest` passed: 28 passed, 3 warnings.
+
+## 2026-08-01 - Phase 4: candidate scoring base
+
+- Added `config/scoring_rules.yaml` for score layer weights, hard validity thresholds, runtime cost normalization, and IQA placeholder policy.
+- Added `CandidateEvaluator` and `CandidateRanker` with hard elimination, layered scoring, close-result detection, and a clear note that the score is an Agent recommendation score rather than an absolute image quality percentage.
+- Added tests for invalid output elimination, ranking, and close-candidate warnings.
+- Verification: `.\.venv\Scripts\python -m pytest` passed: 31 passed, 3 warnings.
