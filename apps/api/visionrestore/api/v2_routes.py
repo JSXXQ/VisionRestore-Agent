@@ -1,16 +1,17 @@
-from fastapi import APIRouter, File, HTTPException, UploadFile
+﻿from fastapi import APIRouter, File, HTTPException, UploadFile, WebSocket
+from fastapi.responses import FileResponse
 
 from visionrestore.adapters.registry import ModelRegistry
 from visionrestore.core.config import get_settings
 from visionrestore.schemas.common import ok
+from visionrestore.schemas.postprocess import PostprocessDecision
 from visionrestore.schemas.task import TaskCreate
+from visionrestore.services.artifact_lineage import ArtifactLineageService
 from visionrestore.services.hardware import HardwareInspector
 from visionrestore.services.image_analyzer import ImageAnalyzer
-from visionrestore.services.artifact_lineage import ArtifactLineageService
-from visionrestore.services.candidate_evaluator import CandidateRanker
-from visionrestore.services.residual_analyzer import ResidualDegradationAnalyzer
 from visionrestore.services.postprocess_controller import PostprocessController
-from visionrestore.schemas.postprocess import PostprocessDecision
+from visionrestore.services.residual_analyzer import ResidualDegradationAnalyzer
+from visionrestore.services.result_selector import ResultSelector
 from visionrestore.services.task_service import task_service
 from visionrestore.storage.database import Database
 from visionrestore.utils.file_security import UploadValidationError, resolve_registered_path, safe_image_upload
@@ -60,7 +61,10 @@ def scan_models_v2():
 @router.post("/models/{model_id}/health-check")
 def model_health_v2(model_id: str):
     try:
-        return ok(ModelRegistry().get(model_id).health_check())
+        result = ModelRegistry().get(model_id).health_check()
+        record_id = f"{model_id}:{len(db.list_entities('model_health_record')) + 1}"
+        db.put_entity("model_health_record", record_id, result, task_id=None)
+        return ok(result)
     except KeyError:
         raise HTTPException(status_code=404, detail="模型不存在")
 
@@ -86,6 +90,7 @@ async def analyze_image_v2(file: UploadFile = File(...)):
     db.put_file(record.file_id, record.model_dump())
     analysis = ImageAnalyzer().analyze(str(resolve_registered_path(record.relative_path)))
     return ok({"file": record.model_dump(), "analysis": analysis.model_dump()})
+
 
 @router.post("/tasks")
 def create_task_v2(payload: TaskCreate):
@@ -133,9 +138,10 @@ def task_ranking_v2(task_id: str):
     task = task_service.get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
-    candidates = [item.model_dump() for item in task.candidates]
-    ranking = CandidateRanker().rank(candidates, task.priority)
-    return ok({key: (value.__dict__ if hasattr(value, "__dict__") else [item.__dict__ for item in value] if isinstance(value, list) else value) for key, value in ranking.items()})
+    selection = ResultSelector().select([item.model_dump() for item in task.candidates], task.priority)
+    payload = selection.model_dump()
+    db.put_entity("candidate_ranking", f"{task_id}:latest", payload, task_id=task_id)
+    return ok(payload)
 
 
 @router.post("/tasks/{task_id}/select-candidate")
@@ -168,7 +174,9 @@ def task_recommendations_v2(task_id: str):
         user_intent=task.user_intent,
         hardware=task.hardware_info or {},
     )
-    return ok({"recommendation": recommendation.model_dump()})
+    payload = recommendation.model_dump()
+    db.put_entity("postprocess_recommendation", f"{task_id}:latest", payload, task_id=task_id)
+    return ok({"recommendation": payload})
 
 
 @router.post("/tasks/{task_id}/postprocess/decision")
@@ -176,11 +184,14 @@ def postprocess_decision_v2(task_id: str, payload: dict):
     task = task_service.get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
-    operation = payload.get("operation")
-    decision = payload.get("decision")
-    task.logs.append(f"后处理决策已记录：{operation}={decision}。真实执行将在对应worker ready后启用。")
+    decision = PostprocessDecision.model_validate(payload)
+    result = PostprocessController().decide(task=task, decision=decision)
+    if result.next_status:
+        task.status = result.next_status
+    task.logs.append(result.message)
     task_service.save(task)
-    return ok({"accepted": True, "operation": operation, "decision": decision, "executed": False, "message": "已记录决策；当前阶段不伪造后处理执行。"})
+    db.put_entity("postprocess_decision", f"{task_id}:{decision.operation}:{len(task.logs)}", {"decision": decision.model_dump(), "result": result.model_dump()}, task_id=task_id)
+    return ok(result.model_dump())
 
 
 @router.get("/tasks/{task_id}/artifacts")
@@ -189,3 +200,32 @@ def task_artifacts_v2(task_id: str):
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
     return ok(ArtifactLineageService().from_task(task).model_dump())
+
+
+@router.get("/tasks/{task_id}/report")
+def task_report_v2(task_id: str):
+    task = task_service.get(task_id)
+    if not task or not task.report_file_id:
+        raise HTTPException(status_code=404, detail="报告不存在")
+    path = get_settings().report_dir / f"{task.report_file_id}.md"
+    return FileResponse(path, media_type="text/markdown", filename=f"{task_id}.md")
+
+
+@router.websocket("/tasks/{task_id}/stream")
+async def task_stream_v2(websocket: WebSocket, task_id: str):
+    import asyncio
+    await websocket.accept()
+    last = None
+    for _ in range(600):
+        task = task_service.get(task_id)
+        if not task:
+            await websocket.send_json({"success": False, "message": "任务不存在"})
+            break
+        payload = task.model_dump()
+        if payload != last:
+            await websocket.send_json({"success": True, "data": payload})
+            last = payload
+        if task.status in {"completed", "failed", "cancelled"}:
+            break
+        await asyncio.sleep(0.5)
+    await websocket.close()

@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -58,7 +58,8 @@ def test_v2_task_candidates_ranking_and_artifacts():
     assert c.get(f"/api/v2/tasks/{task.task_id}/candidates").status_code == 200
     ranking = c.get(f"/api/v2/tasks/{task.task_id}/ranking")
     assert ranking.status_code == 200
-    assert ranking.json()["data"]["best"]["model_id"] == "retinexformer"
+    assert ranking.json()["data"]["selected"]["model_id"] == "retinexformer"
+    assert Database().get_entity("candidate_ranking", f"{task.task_id}:latest")["selected"]["model_id"] == "retinexformer"
     artifacts = c.get(f"/api/v2/tasks/{task.task_id}/artifacts")
     assert artifacts.status_code == 200
     assert artifacts.json()["data"]["selected"]["file_id"] == "out-1"
@@ -67,7 +68,7 @@ def test_v2_task_candidates_ranking_and_artifacts():
 def test_v2_postprocess_decision_records_without_fake_execution():
     task = _save_task("v2-postprocess-decision-case")
     c = TestClient(app)
-    response = c.post(f"/api/v2/tasks/{task.task_id}/postprocess/decision", json={"operation": "denoise", "decision": "skip"})
+    response = c.post(f"/api/v2/tasks/{task.task_id}/postprocess/decision", json={"operation": "denoise", "decision": "accept", "model_id": "lpdm"})
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["executed"] is False

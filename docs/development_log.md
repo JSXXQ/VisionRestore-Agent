@@ -314,3 +314,12 @@ Known gaps:
 - Reused `CandidateRanker` as the scoring authority instead of duplicating ranking logic.
 - Added tests for best/second/failed retention, close competition messaging, and all-failed handling.
 - Verification: `.\.venv\Scripts\python -m pytest` passed: 53 passed, 3 warnings.
+
+## 2026-08-01 - Phase 11/25: v2 trace persistence and compatibility endpoints
+
+- `/api/v2/models/{model_id}/health-check` now persists model health records.
+- `/api/v2/tasks/{task_id}/ranking` now uses `ResultSelector` and persists the latest candidate ranking.
+- `/api/v2/tasks/{task_id}/recommendations` persists postprocess recommendations.
+- Added `/api/v2/tasks/{task_id}/report` and websocket `/api/v2/tasks/{task_id}/stream` compatibility endpoints.
+- Updated v2 tests for persisted ranking and structured postprocess decision behavior.
+- Verification: `.\.venv\Scripts\python -m pytest` passed: 53 passed, 3 warnings.
