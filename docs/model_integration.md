@@ -15,3 +15,7 @@ HVI-CIDNet is integrated through the same isolated subprocess worker contract. T
 ## DarkIR Worker
 
 DarkIR is integrated through the isolated subprocess worker contract without using the repository's DDP/complexity-measurement inference entrypoint. The worker loads `archs/DarkIR.py` directly, reads network parameters from the configured YAML file, loads the selected local `params` checkpoint, runs CUDA inference, and saves a clamped RGB output. This avoids optional `ptflops` and distributed-runtime dependencies while still executing the original DarkIR network and local checkpoints.
+
+## Remaining Dependency-Blocked Workers
+
+MambaIR and LPDM have local source and weight paths configured, but they are not marked available until their required runtime packages exist in the selected local Python environment. MambaIR currently reports missing `mamba_ssm`, `causal_conv1d`, and `timm`. LPDM currently reports missing `omegaconf` and `pytorch_lightning`. Their workers return structured dependency-blocked failures during health checks instead of mock results or generic unsupported messages.
