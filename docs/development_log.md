@@ -234,3 +234,12 @@ Known gaps:
 8. Add frontend analysis mode selector and AI status/semantic cards.
 9. Add provider and hybrid routing tests.
 10. Re-run local Retinexformer and SCI regression tests.
+
+## 2026-08-01 - Phase 1: model runtime config and subprocess worker base
+
+- Added structured worker request/response schema for `health_check`, `enhance`, `denoise`, and `super_resolve` operations.
+- Added `SubprocessBackend` and `SubprocessModelRuntime` as the safe execution base for per-model isolated Python environments. It uses argument arrays, writes `request.json`/`response.json`, captures stdout/stderr logs, enforces timeout, supports cancellation, and rejects outputs outside the task directory.
+- Extended model config parsing with `ModelRuntimeConfig` and `WeightProfile`, while keeping compatibility with the existing `weights:` format used by Retinexformer/SCI/Zero-DCE.
+- Extended `config/models.example.yaml` with placeholder isolated-environment entries for DarkIR, HVI-CIDNet, FLOL, LPDM, and MambaIR. No real absolute paths or keys were added.
+- Added subprocess backend tests.
+- Verification: `.\.venv\Scripts\python -m pytest` passed: 23 passed, 3 warnings.

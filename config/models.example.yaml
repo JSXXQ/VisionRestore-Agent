@@ -31,3 +31,63 @@ models:
     weights:
       epoch99:
         path: "<Epoch99.pth>"
+  darkir:
+    source_path: "<DarkIR source path>"
+    python_executable: "<path-to-darkir-python.exe>"
+    environment_name: "darkir"
+    execution_backend: "subprocess"
+    worker_script: "workers/darkir_worker.py"
+    device: "cuda:0"
+    precision: "fp16"
+    timeout_seconds: 300
+    supports_fp16: true
+    supports_tiling: true
+    max_concurrency: 1
+    weight_profiles: []
+  hvi_cidnet:
+    source_path: "<HVI-CIDNet source path>"
+    python_executable: "<path-to-hvi-python.exe>"
+    environment_name: "hvi"
+    execution_backend: "subprocess"
+    worker_script: "workers/hvi_cidnet_worker.py"
+    device: "cuda:0"
+    precision: "fp16"
+    timeout_seconds: 300
+    supports_fp16: true
+    max_concurrency: 1
+    weight_profiles: []
+  flol:
+    source_path: "<FLOL source path>"
+    python_executable: "<path-to-flol-python.exe>"
+    environment_name: "flol"
+    execution_backend: "subprocess"
+    worker_script: "workers/flol_worker.py"
+    device: "cuda:0"
+    precision: "fp16"
+    timeout_seconds: 240
+    supports_fp16: true
+    max_concurrency: 1
+    weight_profiles: []
+  lpdm:
+    source_path: "<LPDM source path>"
+    python_executable: "<path-to-lpdm-python.exe>"
+    environment_name: "lpdm"
+    execution_backend: "subprocess"
+    worker_script: "workers/lpdm_worker.py"
+    device: "cuda:0"
+    precision: "fp16"
+    timeout_seconds: 300
+    supports_fp16: true
+    max_concurrency: 1
+    weight_profiles: []
+  mambair:
+    source_path: "<MambaIR source path>"
+    python_executable: "<path-to-mambair-python.exe>"
+    environment_name: "mambair"
+    execution_backend: "subprocess"
+    worker_script: "workers/mambair_worker.py"
+    device: "cuda:0"
+    precision: "fp16"
+    timeout_seconds: 300
+    supports_fp16: true
+    weight_profiles: []

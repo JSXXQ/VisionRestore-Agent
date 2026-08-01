@@ -1,12 +1,40 @@
-﻿from pathlib import Path
+from pathlib import Path
 from functools import lru_cache
 import hashlib
 import yaml
+from pydantic import BaseModel, Field
 from visionrestore.core.config import PROJECT_ROOT
 
 CONFIG_DIR = PROJECT_ROOT / "config"
 LOCAL_MODELS = CONFIG_DIR / "models.local.yaml"
 ROUTING_RULES = CONFIG_DIR / "routing_rules.yaml"
+
+class WeightProfile(BaseModel):
+    checkpoint_id: str
+    path: str = ""
+    config_path: str | None = None
+    display_name: str = ""
+    domain: str = ""
+    auto_route: bool = True
+    default: bool = False
+    metadata: dict = Field(default_factory=dict)
+
+
+class ModelRuntimeConfig(BaseModel):
+    model_id: str
+    source_path: str = ""
+    python_executable: str = "python"
+    environment_name: str = ""
+    execution_backend: str = "subprocess"
+    worker_script: str = ""
+    device: str = "cuda:0"
+    precision: str = "fp16"
+    timeout_seconds: int = 240
+    supports_fp16: bool = True
+    supports_tiling: bool = False
+    supports_cpu: bool = False
+    max_concurrency: int = 1
+    weight_profiles: list[WeightProfile] = Field(default_factory=list)
 
 
 def _read_yaml(path: Path) -> dict:
@@ -29,6 +57,34 @@ def external_python() -> str:
     return get_model_config().get("external_python", "python")
 
 
+
+def get_model_runtime_config(model_id: str) -> ModelRuntimeConfig:
+    root = get_model_config()
+    cfg = (root.get("models", {}) or {}).get(model_id, {}) or {}
+    weights = cfg.get("weight_profiles") or cfg.get("weights") or {}
+    profiles: list[WeightProfile] = []
+    if isinstance(weights, dict):
+        for checkpoint_id, item in weights.items():
+            item = item or {}
+            profiles.append(WeightProfile(checkpoint_id=checkpoint_id, **item))
+    elif isinstance(weights, list):
+        profiles = [WeightProfile.model_validate(item) for item in weights]
+    return ModelRuntimeConfig(
+        model_id=model_id,
+        source_path=cfg.get("source_path", ""),
+        python_executable=cfg.get("python_executable") or root.get("external_python", "python"),
+        environment_name=cfg.get("environment_name", ""),
+        execution_backend=cfg.get("execution_backend", "subprocess"),
+        worker_script=cfg.get("worker_script", ""),
+        device=cfg.get("device", "cuda:0"),
+        precision=cfg.get("precision", "fp16"),
+        timeout_seconds=int(cfg.get("timeout_seconds", 240)),
+        supports_fp16=bool(cfg.get("supports_fp16", True)),
+        supports_tiling=bool(cfg.get("supports_tiling", False)),
+        supports_cpu=bool(cfg.get("supports_cpu", False)),
+        max_concurrency=int(cfg.get("max_concurrency", 1)),
+        weight_profiles=profiles,
+    )
 def file_sha256(path: str | Path) -> str | None:
     p = Path(path)
     if not p.exists() or not p.is_file():
