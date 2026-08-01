@@ -291,3 +291,11 @@ Known gaps:
 - Added v2 entity tables for candidate plans/results/metrics/rankings, postprocess recommendations/decisions/results, artifact lineages, model health records, and AI analysis records.
 - Added generic `put_entity`, `get_entity`, and `list_entities` helpers for the new v2 entities.
 - Verification: `.\.venv\Scripts\python -m pytest` passed: 44 passed, 3 warnings.
+
+## 2026-08-01 - Phase 3: multi-candidate executor base
+
+- Added `MultiCandidateExecutor` to execute candidate plans serially while forcing every candidate to read the same original input image.
+- Candidate failures are recorded per candidate and do not stop remaining candidates.
+- Formal multi-candidate execution rejects mock outputs instead of ranking them.
+- Added tests for original-input isolation, failure isolation, and mock rejection.
+- Verification: `.\.venv\Scripts\python -m pytest` passed: 47 passed, 3 warnings.
