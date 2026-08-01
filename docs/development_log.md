@@ -274,3 +274,12 @@ Known gaps:
 - `/api/v2/models` returns model groups and counts only non-mock ready models.
 - Added API tests for v2 health, model grouping, and scan.
 - Verification: `.\.venv\Scripts\python -m pytest` passed: 38 passed, 3 warnings.
+
+## 2026-08-01 - Phase 5/8/11/25 foundation: workers, artifact lineage, and v2 task APIs
+
+- Added the required `workers/` protocol files for Retinexformer, SCI, Zero-DCE, DarkIR, HVI-CIDNet, FLOL, LPDM, and MambaIR.
+- Retinexformer/SCI/Zero-DCE workers wrap the existing local `model_infer_runner.py` protocol. New model workers explicitly return `success=false` until real adapter logic is implemented, so they cannot create fake results.
+- Added artifact lineage schema and service. Task creation now creates `data/tasks/<task_id>/` with input, previews, candidates, selected, postprocess, final, reports, and logs folders.
+- Expanded `/api/v2` with task create/get/cancel, plan, candidates, ranking, candidate selection, recommendations, postprocess decision recording, and artifacts endpoints.
+- Postprocess decisions are recorded but not falsely executed until the corresponding real worker is ready.
+- Verification: `.\.venv\Scripts\python -m pytest` passed: 41 passed, 3 warnings.

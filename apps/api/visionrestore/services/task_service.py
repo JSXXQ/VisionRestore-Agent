@@ -1,9 +1,10 @@
-﻿from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 from visionrestore.agent.enhancement_agent import EnhancementAgent
 from visionrestore.schemas.common import now_iso
 from visionrestore.schemas.task import EnhancementPlan, TaskCreate, TaskRecord
 from visionrestore.storage.database import Database
+from visionrestore.services.artifact_lineage import ArtifactLineageService
 
 class TaskService:
     def __init__(self):
@@ -38,6 +39,7 @@ class TaskService:
                 selection_reason=f"用户手动指定模型 {request.model_id}。",
                 parameters={**request.parameters, "checkpoint_id": checkpoint},
             )
+        ArtifactLineageService().create_task_layout(task.task_id)
         self.save(task)
         self.pool.submit(EnhancementAgent().run, task, file_record, self.save)
         return task
