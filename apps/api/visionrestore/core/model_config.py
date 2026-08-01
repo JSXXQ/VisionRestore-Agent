@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 from functools import lru_cache
 import hashlib
 import yaml
@@ -8,6 +8,7 @@ from visionrestore.core.config import PROJECT_ROOT
 CONFIG_DIR = PROJECT_ROOT / "config"
 LOCAL_MODELS = CONFIG_DIR / "models.local.yaml"
 ROUTING_RULES = CONFIG_DIR / "routing_rules.yaml"
+
 
 class WeightProfile(BaseModel):
     checkpoint_id: str
@@ -57,7 +58,6 @@ def external_python() -> str:
     return get_model_config().get("external_python", "python")
 
 
-
 def get_model_runtime_config(model_id: str) -> ModelRuntimeConfig:
     root = get_model_config()
     cfg = (root.get("models", {}) or {}).get(model_id, {}) or {}
@@ -85,6 +85,8 @@ def get_model_runtime_config(model_id: str) -> ModelRuntimeConfig:
         max_concurrency=int(cfg.get("max_concurrency", 1)),
         weight_profiles=profiles,
     )
+
+
 def file_sha256(path: str | Path) -> str | None:
     p = Path(path)
     if not p.exists() or not p.is_file():

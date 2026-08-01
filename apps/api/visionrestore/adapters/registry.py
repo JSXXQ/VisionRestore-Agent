@@ -1,15 +1,23 @@
-﻿from .zero_dce import ZeroDCEAdapter
+from __future__ import annotations
+from .zero_dce import ZeroDCEAdapter
 from .sci import SCIAdapter
 from .retinexformer import RetinexformerAdapter
 from .mock import MockModelAdapter
+from .worker_model import WorkerModelAdapter, WORKER_MODEL_SPECS
 from visionrestore.core.config import get_settings
+
 
 class ModelRegistry:
     def __init__(self):
         self.adapters = {
             "retinexformer": RetinexformerAdapter(),
+            "darkir": WorkerModelAdapter("darkir"),
+            "hvi_cidnet": WorkerModelAdapter("hvi_cidnet"),
+            "flol": WorkerModelAdapter("flol"),
             "sci": SCIAdapter(),
             "zero_dce": ZeroDCEAdapter(),
+            "lpdm": WorkerModelAdapter("lpdm"),
+            "mambair": WorkerModelAdapter("mambair"),
         }
         if get_settings().mock_models_enabled:
             self.adapters["mock_model"] = MockModelAdapter()
@@ -31,3 +39,9 @@ class ModelRegistry:
 
     def available(self):
         return [a for a in self.adapters.values() if a.get_status().available]
+
+    def enhancement_model_ids(self) -> list[str]:
+        return ["retinexformer", "darkir", "hvi_cidnet", "flol", "sci", "zero_dce"]
+
+    def postprocess_model_ids(self) -> list[str]:
+        return ["lpdm", "mambair"]

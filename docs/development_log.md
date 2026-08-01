@@ -243,3 +243,11 @@ Known gaps:
 - Extended `config/models.example.yaml` with placeholder isolated-environment entries for DarkIR, HVI-CIDNet, FLOL, LPDM, and MambaIR. No real absolute paths or keys were added.
 - Added subprocess backend tests.
 - Verification: `.\.venv\Scripts\python -m pytest` passed: 23 passed, 3 warnings.
+
+## 2026-08-01 - Phase 2/3: honest model registry and candidate planning base
+
+- Added `WorkerModelAdapter` for DarkIR, HVI-CIDNet, FLOL, LPDM, and MambaIR. These models are visible in the model registry but remain `available=false` until source, worker, environment, weights/config, and real health checks are complete.
+- Extended `ModelRegistry` groups for enhancement models and postprocess models without enabling unverified models for routing.
+- Added `CandidatePlanner` and candidate plan schemas. The planner enforces candidate budgets: speed=1, balanced=2, quality/compare=3, honors manual choices, and marks all candidates as `original_input_only`.
+- Added tests for honest model status and candidate planning behavior.
+- Verification: `.\.venv\Scripts\python -m pytest` passed: 28 passed, 3 warnings.
