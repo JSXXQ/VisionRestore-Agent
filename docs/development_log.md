@@ -258,3 +258,11 @@ Known gaps:
 - Added `CandidateEvaluator` and `CandidateRanker` with hard elimination, layered scoring, close-result detection, and a clear note that the score is an Agent recommendation score rather than an absolute image quality percentage.
 - Added tests for invalid output elimination, ranking, and close-candidate warnings.
 - Verification: `.\.venv\Scripts\python -m pytest` passed: 31 passed, 3 warnings.
+
+## 2026-08-01 - Phase 7: residual degradation analyzer base
+
+- Added postprocess recommendation schema and `config/postprocess_rules.yaml`.
+- Added `ResidualDegradationAnalyzer` to recommend denoise and super-resolution interactively with reasons, confidence, risks, preferred model, and scale.
+- DarkIR outputs use a higher denoise threshold because DarkIR is treated as a joint restoration model.
+- High-resolution inputs do not receive default SR recommendations unless the user explicitly asks.
+- Verification: `.\.venv\Scripts\python -m pytest` passed: 35 passed, 3 warnings.

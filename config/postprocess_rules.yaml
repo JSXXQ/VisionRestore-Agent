@@ -1,0 +1,16 @@
+﻿residual_degradation:
+  denoise:
+    noise_increase_min: 4
+    noise_after_min: 12
+    color_noise_cast_min: 0.18
+    darkir_extra_threshold: 1.35
+    confidence_high: 0.75
+  super_resolution:
+    short_edge_threshold: 900
+    high_resolution_short_edge: 1600
+    default_scale: 2
+    max_default_scale: 2
+  blur:
+    sharpness_after_min: 60
+  overprocess:
+    structure_min: 0.45

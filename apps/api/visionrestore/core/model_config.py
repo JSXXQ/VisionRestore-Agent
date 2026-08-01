@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 from functools import lru_cache
 import hashlib
 import yaml
@@ -9,6 +9,7 @@ CONFIG_DIR = PROJECT_ROOT / "config"
 LOCAL_MODELS = CONFIG_DIR / "models.local.yaml"
 ROUTING_RULES = CONFIG_DIR / "routing_rules.yaml"
 SCORING_RULES = CONFIG_DIR / "scoring_rules.yaml"
+POSTPROCESS_RULES = CONFIG_DIR / "postprocess_rules.yaml"
 
 
 class WeightProfile(BaseModel):
@@ -58,6 +59,12 @@ def get_routing_rules() -> dict:
 @lru_cache
 def get_scoring_rules() -> dict:
     return _read_yaml(SCORING_RULES)
+
+
+
+@lru_cache
+def get_postprocess_rules() -> dict:
+    return _read_yaml(POSTPROCESS_RULES)
 
 
 def external_python() -> str:
