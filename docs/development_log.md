@@ -266,3 +266,11 @@ Known gaps:
 - DarkIR outputs use a higher denoise threshold because DarkIR is treated as a joint restoration model.
 - High-resolution inputs do not receive default SR recommendations unless the user explicitly asks.
 - Verification: `.\.venv\Scripts\python -m pytest` passed: 35 passed, 3 warnings.
+
+## 2026-08-01 - Phase 25: /api/v2 foundation
+
+- Added `/api/v2` base routes while preserving `/api/v1` compatibility.
+- Implemented `GET /api/v2/health`, `GET /api/v2/system`, `GET /api/v2/models`, `POST /api/v2/models/scan`, `POST /api/v2/models/{model_id}/health-check`, `POST /api/v2/images/upload`, and `POST /api/v2/images/analyze`.
+- `/api/v2/models` returns model groups and counts only non-mock ready models.
+- Added API tests for v2 health, model grouping, and scan.
+- Verification: `.\.venv\Scripts\python -m pytest` passed: 38 passed, 3 warnings.

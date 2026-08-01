@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from visionrestore.api.ai_routes import router as ai_router
 from visionrestore.api.routes import router
+from visionrestore.api.v2_routes import router as v2_router
 from visionrestore.core.config import PROJECT_ROOT, get_settings
 from visionrestore.schemas.common import ApiError, now_iso
 from uuid import uuid4
@@ -30,6 +31,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
 
 app.include_router(router)
 app.include_router(ai_router)
+app.include_router(v2_router)
 
 dist = PROJECT_ROOT / "apps" / "web" / "dist"
 if dist.exists():
