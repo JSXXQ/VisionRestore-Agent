@@ -323,3 +323,9 @@ Known gaps:
 - Added `/api/v2/tasks/{task_id}/report` and websocket `/api/v2/tasks/{task_id}/stream` compatibility endpoints.
 - Updated v2 tests for persisted ranking and structured postprocess decision behavior.
 - Verification: `.\.venv\Scripts\python -m pytest` passed: 53 passed, 3 warnings.
+
+## 2026-08-01 - Documentation refresh for v2 foundations
+
+- Added docs for multi-candidate planning, candidate scoring, postprocess workflow, model environment isolation, artifact lineage, and model download/check workflow.
+- Updated API documentation with the implemented `/api/v2` foundation endpoints.
+- Documentation explicitly marks unavailable worker models and incomplete execution phases to avoid presenting placeholders as finished real model integration.
