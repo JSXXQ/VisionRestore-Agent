@@ -307,3 +307,10 @@ Known gaps:
 - Added `PostprocessController` to handle accept/skip/choose_model decisions without falsely executing unavailable postprocess models.
 - `/api/v2/tasks/{task_id}/postprocess/decision` now validates structured decisions, updates task status, records logs, and persists the decision in the v2 database entity table.
 - Verification: `.\.venv\Scripts\python -m pytest` passed: 50 passed, 3 warnings.
+
+## 2026-08-01 - Phase 6: result selector base
+
+- Added `ResultSelector` and selection schema to keep best candidate, second-best candidate, successful candidates, failed/eliminated candidates, close-score warnings, and explanation text.
+- Reused `CandidateRanker` as the scoring authority instead of duplicating ranking logic.
+- Added tests for best/second/failed retention, close competition messaging, and all-failed handling.
+- Verification: `.\.venv\Scripts\python -m pytest` passed: 53 passed, 3 warnings.
