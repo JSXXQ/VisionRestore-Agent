@@ -299,3 +299,11 @@ Known gaps:
 - Formal multi-candidate execution rejects mock outputs instead of ranking them.
 - Added tests for original-input isolation, failure isolation, and mock rejection.
 - Verification: `.\.venv\Scripts\python -m pytest` passed: 47 passed, 3 warnings.
+
+## 2026-08-01 - Phase 8/9: postprocess decision controller base
+
+- Extended task statuses with denoise/SR confirmation and execution states.
+- Added `PostprocessDecision` and `PostprocessResult` schemas.
+- Added `PostprocessController` to handle accept/skip/choose_model decisions without falsely executing unavailable postprocess models.
+- `/api/v2/tasks/{task_id}/postprocess/decision` now validates structured decisions, updates task status, records logs, and persists the decision in the v2 database entity table.
+- Verification: `.\.venv\Scripts\python -m pytest` passed: 50 passed, 3 warnings.

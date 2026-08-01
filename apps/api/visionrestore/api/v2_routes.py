@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from visionrestore.adapters.registry import ModelRegistry
 from visionrestore.core.config import get_settings
@@ -9,6 +9,8 @@ from visionrestore.services.image_analyzer import ImageAnalyzer
 from visionrestore.services.artifact_lineage import ArtifactLineageService
 from visionrestore.services.candidate_evaluator import CandidateRanker
 from visionrestore.services.residual_analyzer import ResidualDegradationAnalyzer
+from visionrestore.services.postprocess_controller import PostprocessController
+from visionrestore.schemas.postprocess import PostprocessDecision
 from visionrestore.services.task_service import task_service
 from visionrestore.storage.database import Database
 from visionrestore.utils.file_security import UploadValidationError, resolve_registered_path, safe_image_upload

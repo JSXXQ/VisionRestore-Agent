@@ -1,4 +1,4 @@
-﻿from typing import Literal
+from typing import Literal
 from pydantic import BaseModel, Field
 from .ai import AnalysisMode, MultimodalAnalysisResult
 from .image import ImageAnalysisResult
@@ -7,7 +7,7 @@ from .intent import UserIntent
 TaskStatus = Literal[
     "queued", "analyzing", "parsing_intent", "inspecting_hardware", "routing_model",
     "routing_checkpoint", "loading_model", "running", "evaluating", "fallback_running",
-    "selecting_result", "completed", "failed", "cancelled"
+    "selecting_result", "awaiting_denoise_confirmation", "denoising", "denoise_evaluating", "awaiting_sr_confirmation", "super_resolving", "sr_evaluating", "rolling_back", "finalizing", "completed", "failed", "cancelled"
 ]
 TaskMode = Literal["auto", "manual", "compare"]
 Priority = Literal["quality", "balanced", "speed"]
