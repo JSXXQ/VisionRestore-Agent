@@ -11,3 +11,7 @@ The FLOL worker prepares the local conda CUDA DLL search paths before importing 
 ## HVI-CIDNet Worker
 
 HVI-CIDNet is integrated through the same isolated subprocess worker contract. The worker loads `net.CIDNet.CIDNet` from the configured local source path, loads the selected local `.pth` checkpoint, pads RGB images to a multiple of 8, runs CUDA inference, crops back to the original dimensions, and writes the enhanced RGB output. Availability and routing are gated by the same real small-image health cache used by the worker adapter.
+
+## DarkIR Worker
+
+DarkIR is integrated through the isolated subprocess worker contract without using the repository's DDP/complexity-measurement inference entrypoint. The worker loads `archs/DarkIR.py` directly, reads network parameters from the configured YAML file, loads the selected local `params` checkpoint, runs CUDA inference, and saves a clamped RGB output. This avoids optional `ptflops` and distributed-runtime dependencies while still executing the original DarkIR network and local checkpoints.
