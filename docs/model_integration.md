@@ -16,6 +16,10 @@ HVI-CIDNet is integrated through the same isolated subprocess worker contract. T
 
 DarkIR is integrated through the isolated subprocess worker contract without using the repository's DDP/complexity-measurement inference entrypoint. The worker loads `archs/DarkIR.py` directly, reads network parameters from the configured YAML file, loads the selected local `params` checkpoint, runs CUDA inference, and saves a clamped RGB output. This avoids optional `ptflops` and distributed-runtime dependencies while still executing the original DarkIR network and local checkpoints.
 
+## LPDM Worker
+
+LPDM is integrated as a real one-pass diffusion post-processing worker. The worker loads `ldm.util.instantiate_from_config` from the configured local source path, loads `lpdm_lol.yaml` and `lpdm_lol.ckpt`, prepares the enhanced image and condition image in LDM `[-1, 1]` range, runs the configured `phi=300` and `s=30` denoising step, and writes a clamped RGB output. If only one input image is supplied by the current adapter contract, the worker uses that image as both the enhanced input and condition image; future postprocess execution can pass the original low-light image as the second input path.
+
 ## Remaining Dependency-Blocked Workers
 
-MambaIR and LPDM have local source and weight paths configured, but they are not marked available until their required runtime packages exist in the selected local Python environment. MambaIR currently reports missing `mamba_ssm`, `causal_conv1d`, and `timm`. LPDM currently reports missing `omegaconf` and `pytorch_lightning`. Their workers return structured dependency-blocked failures during health checks instead of mock results or generic unsupported messages.
+MambaIR has local source and weight paths configured, but it is not marked available until its required runtime packages exist in the selected local Python environment. In the current Windows Python 3.12 `pytorch` environment, `timm` is available, but `mamba_ssm` and `causal_conv1d` remain missing. Installing the repository-recommended MambaIR versions still requires `triton`, which is not available for this Windows pip environment, so the worker returns a structured dependency-blocked failure instead of a mock result.

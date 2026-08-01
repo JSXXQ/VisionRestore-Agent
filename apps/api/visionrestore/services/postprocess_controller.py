@@ -1,4 +1,4 @@
-﻿from visionrestore.adapters.registry import ModelRegistry
+from visionrestore.adapters.registry import ModelRegistry
 from visionrestore.schemas.postprocess import PostprocessDecision, PostprocessResult
 
 
@@ -41,6 +41,6 @@ class PostprocessController:
             executed=False,
             next_status=running_status,
             model_id=model_id,
-            message="模型已ready；真实执行器将在后续阶段接管该步骤。",
+            message="模型已ready；当前接口仍不伪造后处理执行，真实执行器将在后续阶段接管该步骤。",
             metadata={"model_status": status.status_message},
         )
