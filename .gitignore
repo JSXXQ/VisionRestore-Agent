@@ -3,6 +3,7 @@ data/uploads/
 data/outputs/
 data/cache/
 data/reports/
+data/tasks/
 .env
 *.pth
 *.pt
