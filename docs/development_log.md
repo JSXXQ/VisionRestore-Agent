@@ -283,3 +283,11 @@ Known gaps:
 - Expanded `/api/v2` with task create/get/cancel, plan, candidates, ranking, candidate selection, recommendations, postprocess decision recording, and artifacts endpoints.
 - Postprocess decisions are recorded but not falsely executed until the corresponding real worker is ready.
 - Verification: `.\.venv\Scripts\python -m pytest` passed: 41 passed, 3 warnings.
+
+## 2026-08-01 - Phase 19: additive database foundation
+
+- Added additive v2 database tables without deleting or migrating away the existing `files`, `tasks`, and `settings` payload tables.
+- Added `schema_migrations` version tracking.
+- Added v2 entity tables for candidate plans/results/metrics/rankings, postprocess recommendations/decisions/results, artifact lineages, model health records, and AI analysis records.
+- Added generic `put_entity`, `get_entity`, and `list_entities` helpers for the new v2 entities.
+- Verification: `.\.venv\Scripts\python -m pytest` passed: 44 passed, 3 warnings.
