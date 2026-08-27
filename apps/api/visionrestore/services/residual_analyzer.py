@@ -1,4 +1,4 @@
-﻿from visionrestore.core.model_config import get_postprocess_rules
+from visionrestore.core.model_config import get_postprocess_rules
 from visionrestore.schemas.postprocess import PostprocessRecommendation
 
 
@@ -42,6 +42,18 @@ class ResidualDegradationAnalyzer:
         wants_sr = any(word in (getattr(user_intent, "raw_text", "") or "").lower() for word in ["sr", "super", "放大", "超分", "高清"])
         if short_edge and short_edge < int(sr_rules.get("short_edge_threshold", 900)):
             sr_reason.append("图像短边较低，可能缺乏可用像素尺寸")
+        restoration_evidence = (
+            ((enhanced_metrics.get("score_evidence") or {}).get("restoration") or {}).get("components")
+            or {}
+        )
+        detail_recovery = restoration_evidence.get("detail_recovery")
+        if (
+            detail_recovery is not None
+            and float(detail_recovery) < float(sr_rules.get("detail_recovery_max", 0.55))
+            and short_edge
+            and short_edge < int(sr_rules.get("detail_short_edge_max", 1400))
+        ):
+            sr_reason.append("统一重评显示细节恢复仍不足，且当前像素尺寸适合受控超分")
         if wants_sr:
             sr_reason.append("用户明确表达放大或超分需求")
         if short_edge >= int(sr_rules.get("high_resolution_short_edge", 1600)) and not wants_sr:
@@ -56,12 +68,12 @@ class ResidualDegradationAnalyzer:
             denoise_confidence=round(denoise_confidence, 2),
             denoise_reason=denoise_reason,
             denoise_risk=denoise_risk,
-            preferred_denoiser="lpdm",
+            preferred_denoiser="nafnet",
             super_resolution_recommended=sr_confidence >= 0.35,
             sr_confidence=round(sr_confidence, 2),
             sr_reason=sr_reason,
             sr_risk=sr_risk,
-            preferred_sr_model="mambair_real_sr",
+            preferred_sr_model=str(sr_rules.get("preferred_model", "realesrgan")) if sr_reason else "none",
             preferred_scale=int(sr_rules.get("default_scale", 2)),
         )
 

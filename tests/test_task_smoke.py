@@ -17,5 +17,5 @@ def test_e2e_smoke_task_reaches_terminal_state():
         if got["status"] in {"completed","failed","cancelled"}:
             break
         time.sleep(.25)
-    assert got["status"] in {"completed", "failed"}
+    assert got["status"] in {"completed", "failed", "awaiting_denoise_confirmation", "awaiting_sr_confirmation"}
     assert got["model_candidates"] or got["error"] is not None

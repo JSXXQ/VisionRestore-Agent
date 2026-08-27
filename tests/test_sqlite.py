@@ -21,6 +21,14 @@ def test_database_v2_entity_roundtrip():
     assert db.list_entities("candidate_plan", task_id="task-1")[0]["items"] == [1]
 
 
+def test_database_agent_context_entity_roundtrip():
+    db = Database()
+    db.put_entity("retrieved_context", "task-1:latest", [{"title": "guardrail"}], task_id="task-1")
+    db.put_entity("region_constraint", "task-1:latest", [{"target": "streetlight"}], task_id="task-1")
+    assert db.get_entity("retrieved_context", "task-1:latest")[0]["title"] == "guardrail"
+    assert db.get_entity("region_constraint", "task-1:latest")[0]["target"] == "streetlight"
+
+
 def test_database_rejects_unknown_entity_type():
     db = Database()
     with pytest.raises(KeyError):

@@ -1,0 +1,23 @@
+[
+  {
+    "id": "postprocess-denoise-policy",
+    "source": "postprocess_policy",
+    "title": "Denoise postprocess policy",
+    "content": "Denoise is not automatic by default. Recommend denoise only when residual noise, color noise, block noise, or enhanced-noise increase is detected. Execute only after confirmation unless automatic mode is explicitly enabled. Re-score denoised output and rollback if quality drops.",
+    "tags": ["denoise", "lpdm", "rollback", "postprocess"]
+  },
+  {
+    "id": "postprocess-sr-policy",
+    "source": "postprocess_policy",
+    "title": "Super-resolution postprocess policy",
+    "content": "Super-resolution is not automatic by default. Recommend it only when the user asks for enlargement, the input is low resolution, or downstream use needs larger output. Re-score SR output and rollback if artifacts, amplified noise, or lower score appear.",
+    "tags": ["super-resolution", "realesrgan", "rollback", "postprocess"]
+  },
+  {
+    "id": "postprocess-nafnet-boundary",
+    "source": "postprocess_policy",
+    "title": "NAFNet boundary",
+    "content": "NAFNet is experimental/manual denoising only. It must not participate in default V2 automatic enhancement candidate planning or compete with Retinexformer, DarkIR, HVI-CIDNet, FLOL, and SCI as a main enhancement model.",
+    "tags": ["nafnet", "manual", "experimental", "denoise"]
+  }
+]

@@ -1,0 +1,37 @@
+[
+  {
+    "id": "model-role-retinexformer",
+    "source": "model_roles",
+    "title": "Retinexformer role",
+    "content": "Retinexformer is the stable general real-world low-light enhancement baseline. Prefer it when illumination recovery, non-uniform lighting, natural brightness, and structure preservation are the main needs. It is less specialized than DarkIR for severe joint noise and blur.",
+    "tags": ["retinexformer", "low-light", "checkpoint", "general"]
+  },
+  {
+    "id": "model-role-darkir",
+    "source": "model_roles",
+    "title": "DarkIR role",
+    "content": "DarkIR is a low-light noise and blur joint restoration expert. Prefer it when noise, blur, long-exposure night scenes, road night scenes, clarity requests, or Retinexformer noise amplification risk are present. Extra denoise should require a higher threshold after DarkIR.",
+    "tags": ["darkir", "noise", "blur", "night", "quality"]
+  },
+  {
+    "id": "model-role-hvi-cidnet",
+    "source": "model_roles",
+    "title": "HVI-CIDNet role",
+    "content": "HVI-CIDNet is a color and luminance restoration expert. Prefer it when color preservation, natural color, colorful lights, skin tones, or color cast risk matters. Do not rank it first only because it is newer.",
+    "tags": ["hvi_cidnet", "color", "luminance", "natural", "skin"]
+  },
+  {
+    "id": "model-role-flol",
+    "source": "model_roles",
+    "title": "FLOL role",
+    "content": "FLOL is a fast high-resolution low-VRAM enhancement expert. Prefer it for speed-first tasks, high-resolution images, low memory, quick preview, or when high-quality models are too expensive.",
+    "tags": ["flol", "speed", "high-resolution", "low-vram"]
+  },
+  {
+    "id": "model-role-sci",
+    "source": "model_roles",
+    "title": "SCI role",
+    "content": "SCI is a lightweight fallback, not the main quality-mode candidate. Use it when other enhancement models fail, resources are very low, CPU-only mode is required, or the user explicitly requests SCI.",
+    "tags": ["sci", "fallback", "cpu", "low-vram"]
+  }
+]

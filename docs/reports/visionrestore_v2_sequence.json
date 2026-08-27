@@ -1,0 +1,39 @@
+{
+  "title": "VisionRestore V2 Request and Resume Sequence",
+  "participants": [
+    {"id": "user", "label": "用户", "actor": true},
+    {"id": "web", "label": "Web 工作台"},
+    {"id": "api", "label": "FastAPI / TaskService"},
+    {"id": "graph", "label": "LangGraph V2.2"},
+    {"id": "tool", "label": "ToolRouter / Evaluator"},
+    {"id": "worker", "label": "模型 Worker / CUDA"},
+    {"id": "db", "label": "SQLite / Artifacts"}
+  ],
+  "messages": [
+    {"from": "user", "to": "web", "label": "上传图像、输入目标、可选 ROI"},
+    {"from": "web", "to": "api", "label": "POST /api/v2/tasks"},
+    {"from": "api", "to": "db", "label": "创建 TaskRecord 与任务目录"},
+    {"from": "api", "to": "graph", "label": "run(initial_state, thread_id=task_id)"},
+    {"from": "graph", "to": "tool", "label": "分析图像、检查硬件、检索上下文"},
+    {"from": "tool", "to": "graph", "label": "结构化本地证据", "return": true},
+    {"note": "多模态 AI 仅提供受限建议；本地校验拥有最终权限", "over": "graph"},
+    {"from": "graph", "to": "graph", "label": "CandidatePlanner 生成 1-3 个候选"},
+    {"from": "graph", "to": "tool", "label": "Send(candidate_i) / execute_candidate"},
+    {"from": "tool", "to": "worker", "label": "真实权重推理（原图输入）"},
+    {"from": "worker", "to": "db", "label": "写入候选图像、日志、哈希"},
+    {"from": "worker", "to": "tool", "label": "输出路径、耗时、显存", "return": true},
+    {"from": "tool", "to": "graph", "label": "质量指标、ROI、IQA/fallback", "return": true},
+    {"from": "graph", "to": "graph", "label": "聚合、硬淘汰、final_score 排名"},
+    {"from": "graph", "to": "db", "label": "保存最佳结果、事件、checkpoint"},
+    {"from": "graph", "to": "api", "label": "interrupt：等待去噪/超分确认", "return": true},
+    {"from": "api", "to": "web", "label": "状态 awaiting_*", "return": true},
+    {"from": "user", "to": "web", "label": "确认 / 跳过 / 选择模型"},
+    {"from": "web", "to": "api", "label": "POST postprocess decision"},
+    {"from": "api", "to": "graph", "label": "Command(resume=decision)"},
+    {"from": "graph", "to": "worker", "label": "执行 NAFNet 或 Real-ESRGAN"},
+    {"from": "worker", "to": "graph", "label": "后处理结果", "return": true},
+    {"from": "graph", "to": "graph", "label": "重新评分，质量下降则回滚"},
+    {"from": "graph", "to": "db", "label": "finalize：结果、谱系、报告"},
+    {"from": "api", "to": "web", "label": "返回 completed 与最终图像", "return": true}
+  ]
+}

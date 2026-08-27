@@ -8,7 +8,36 @@ from visionrestore.services.artifact_lineage import ArtifactLineageService
 from visionrestore.storage.database import Database
 
 
+def _main_candidate():
+    return CandidateResult(
+        model_id="retinexformer",
+        checkpoint_id="lol_v2_real",
+        output_file_id="out-1",
+        output_url="/api/v1/files/out-1",
+        status="completed",
+        score=80,
+        metrics={
+            "score": 80,
+            "components": {
+                "shadow_recovery": .8,
+                "highlight_protection": .8,
+                "color_stability": .8,
+                "noise_control": .8,
+                "sharpness": .8,
+                "structure": .8,
+            },
+            "runtime_ms": 1000,
+            "peak_memory_mb": 2000,
+            "mean_luminance_after": 80,
+            "overexposed_pixel_ratio_after": .01,
+            "color_cast_index_after": .02,
+            "structure_keep_estimate": .8,
+        },
+    )
+
+
 def _save_task(task_id="v2-artifacts-case"):
+    main = _main_candidate()
     task = TaskRecord(
         task_id=task_id,
         status="completed",
@@ -17,27 +46,8 @@ def _save_task(task_id="v2-artifacts-case"):
         mode="auto",
         priority="balanced",
         created_at="2026-08-01T00:00:00+00:00",
-        candidates=[
-            CandidateResult(
-                model_id="retinexformer",
-                checkpoint_id="lol_v2_real",
-                output_file_id="out-1",
-                output_url="/api/v1/files/out-1",
-                status="completed",
-                score=80,
-                metrics={
-                    "score": 80,
-                    "components": {"shadow_recovery": .8, "highlight_protection": .8, "color_stability": .8, "noise_control": .8, "sharpness": .8, "structure": .8},
-                    "runtime_ms": 1000,
-                    "peak_memory_mb": 2000,
-                    "mean_luminance_after": 80,
-                    "overexposed_pixel_ratio_after": .01,
-                    "color_cast_index_after": .02,
-                    "structure_keep_estimate": .8,
-                },
-            )
-        ],
-        best_result=CandidateResult(model_id="retinexformer", checkpoint_id="lol_v2_real", output_file_id="out-1", output_url="/api/v1/files/out-1", status="completed", score=80),
+        candidates=[main],
+        best_result=main,
     )
     Database().put_task(task.task_id, task.model_dump())
     return task
@@ -65,11 +75,55 @@ def test_v2_task_candidates_ranking_and_artifacts():
     assert artifacts.json()["data"]["selected"]["file_id"] == "out-1"
 
 
-def test_v2_postprocess_decision_records_without_fake_execution():
+def test_v2_postprocess_decision_does_not_fake_missing_output_execution():
     task = _save_task("v2-postprocess-decision-case")
     c = TestClient(app)
-    response = c.post(f"/api/v2/tasks/{task.task_id}/postprocess/decision", json={"operation": "denoise", "decision": "accept", "model_id": "lpdm"})
+    response = c.post(
+        f"/api/v2/tasks/{task.task_id}/postprocess/decision",
+        json={"operation": "denoise", "decision": "accept", "model_id": "lpdm"},
+    )
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["executed"] is False
-    assert "不伪造" in data["message"]
+    assert data["accepted"] is False
+    assert data["metadata"]["recommended_model"] == "nafnet"
+    assert "暂停执行" in data["message"]
+
+
+def test_v2_postprocess_rollback_restores_main_result_and_refreshes_report():
+    main = _main_candidate()
+    post = CandidateResult(
+        model_id="nafnet",
+        checkpoint_id="sidd_width32",
+        output_file_id="post-1",
+        output_url="/api/v1/files/post-1",
+        status="completed",
+        score=82,
+        metrics={"postprocess_operation": "denoise", "postprocess_input_file_id": "out-1"},
+        parameters={"role": "postprocess", "operation": "denoise", "input_file_id": "out-1"},
+    )
+    task = TaskRecord(
+        task_id="v2-postprocess-rollback-case",
+        status="completed",
+        image_id="input-file",
+        user_goal="test",
+        mode="auto",
+        priority="balanced",
+        created_at="2026-08-01T00:00:00+00:00",
+        candidates=[main, post],
+        best_result=post,
+    )
+    Database().put_task(task.task_id, task.model_dump())
+
+    c = TestClient(app)
+    response = c.post(f"/api/v2/tasks/{task.task_id}/postprocess/rollback")
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["rollback_performed"] is True
+    saved = Database().get_task(task.task_id)
+    assert saved["best_result"]["output_file_id"] == "out-1"
+    assert saved["report_file_id"]
+    report = c.get(f"/api/v2/tasks/{task.task_id}/report")
+    assert report.status_code == 200
+    assert "Postprocess Adoption" in report.text

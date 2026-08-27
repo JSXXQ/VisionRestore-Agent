@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     multimodal_max_retries: int = Field(1, alias="MULTIMODAL_MAX_RETRIES")
     multimodal_fallback_to_local: bool = Field(True, alias="MULTIMODAL_FALLBACK_TO_LOCAL")
     multimodal_remove_metadata: bool = Field(True, alias="MULTIMODAL_REMOVE_METADATA")
+    context_retrieval_enabled: bool = Field(True, alias="CONTEXT_RETRIEVAL_ENABLED")
+    context_retrieval_max_items: int = Field(5, alias="CONTEXT_RETRIEVAL_MAX_ITEMS")
     openai_api_key: str = Field("", alias="OPENAI_API_KEY")
     openai_model: str = Field("", alias="OPENAI_MODEL")
     openai_base_url: str = Field("", alias="OPENAI_BASE_URL")

@@ -42,6 +42,10 @@ def _pil_to_tensor_in_range(path: Path) -> torch.Tensor:
     return T.ToTensor()(Image.open(path).convert("RGB")) * 2.0 - 1.0
 
 
+def _image_to_tensor_in_range(image: Image.Image) -> torch.Tensor:
+    return T.ToTensor()(image.convert("RGB")) * 2.0 - 1.0
+
+
 def _pad_to_multiple(im, mul=16):
     h, w = im.shape[2], im.shape[3]
     pad_h = (mul - h % mul) % mul
@@ -100,11 +104,24 @@ def _infer(request: dict, response_path: Path) -> dict:
         cond_path = pred_path
     phi = int(params.get("phi", 300))
     s = int(params.get("s", 30))
+    max_edge = int(params.get("max_edge") or params.get("lpdm_max_edge") or 512)
 
     started = time.perf_counter()
     model = _load_model_from_config(source_path, config_path, weight_path, device)
-    p = _pil_to_tensor_in_range(pred_path).unsqueeze(0).to(device)
-    c = _pil_to_tensor_in_range(cond_path).unsqueeze(0).to(device)
+    pred_image = Image.open(pred_path).convert("RGB")
+    cond_image = Image.open(cond_path).convert("RGB")
+    original_size = pred_image.size
+    resized_for_memory = False
+    inference_size = original_size
+    if max_edge > 0 and max(original_size) > max_edge:
+        scale = max_edge / float(max(original_size))
+        inference_size = (max(16, int(round(original_size[0] * scale))), max(16, int(round(original_size[1] * scale))))
+        pred_image = pred_image.resize(inference_size, Image.Resampling.BICUBIC)
+        resized_for_memory = True
+    if cond_image.size != pred_image.size:
+        cond_image = cond_image.resize(pred_image.size, Image.Resampling.BICUBIC)
+    p = _image_to_tensor_in_range(pred_image).unsqueeze(0).to(device)
+    c = _image_to_tensor_in_range(cond_image).unsqueeze(0).to(device)
     height, width = p.shape[-2], p.shape[-1]
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
@@ -120,7 +137,10 @@ def _infer(request: dict, response_path: Path) -> dict:
             x0 = model.predict_start_from_noise(padded_p, torch.tensor([s], device=device).long(), noise_pred).detach()
             x0 = x0[..., :height, :width]
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    _tensor_to_pil(torch.clamp(x0, -1.0, 1.0)).save(output_path)
+    output_image = _tensor_to_pil(torch.clamp(x0, -1.0, 1.0))
+    if resized_for_memory:
+        output_image = output_image.resize(original_size, Image.Resampling.BICUBIC)
+    output_image.save(output_path)
     if device.type == "cuda":
         torch.cuda.synchronize(device)
         peak_memory_mb = torch.cuda.max_memory_allocated(device) / 1024 / 1024
@@ -135,8 +155,18 @@ def _infer(request: dict, response_path: Path) -> dict:
         "output_path": str(output_path),
         "runtime_ms": int((time.perf_counter() - started) * 1000),
         "peak_memory_mb": float(peak_memory_mb),
-        "warnings": [],
-        "metadata": {"device": str(device), "weight_path": str(weight_path), "config_path": str(config_path), "phi": phi, "s": s},
+        "warnings": ["LPDM input was downscaled internally to avoid full-resolution diffusion crash."] if resized_for_memory else [],
+        "metadata": {
+            "device": str(device),
+            "weight_path": str(weight_path),
+            "config_path": str(config_path),
+            "phi": phi,
+            "s": s,
+            "max_edge": max_edge,
+            "resized_for_memory": resized_for_memory,
+            "original_size": list(original_size),
+            "inference_size": list(inference_size),
+        },
         "error": None,
     }
 

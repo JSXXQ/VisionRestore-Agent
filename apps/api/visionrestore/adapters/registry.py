@@ -17,7 +17,8 @@ class ModelRegistry:
             "sci": SCIAdapter(),
             "zero_dce": ZeroDCEAdapter(),
             "lpdm": WorkerModelAdapter("lpdm"),
-            "mambair": WorkerModelAdapter("mambair"),
+            "nafnet": WorkerModelAdapter("nafnet"),
+            "realesrgan": WorkerModelAdapter("realesrgan"),
         }
         if get_settings().mock_models_enabled:
             self.adapters["mock_model"] = MockModelAdapter()
@@ -44,4 +45,4 @@ class ModelRegistry:
         return ["retinexformer", "darkir", "hvi_cidnet", "flol", "sci", "zero_dce"]
 
     def postprocess_model_ids(self) -> list[str]:
-        return ["lpdm", "mambair"]
+        return ["lpdm", "nafnet", "realesrgan"]

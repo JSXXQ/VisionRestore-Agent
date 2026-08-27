@@ -10,11 +10,48 @@ from visionrestore.schemas.worker import WorkerRequest
 
 
 WORKER_MODEL_SPECS = {
-    "darkir": {"display_name": "DarkIR", "description": "低照度、噪声和模糊联合恢复专家。", "task_type": "enhancement", "license_name": "Unknown", "supports_tiling": True},
-    "hvi_cidnet": {"display_name": "HVI-CIDNet", "description": "颜色和亮度恢复专家。", "task_type": "enhancement", "license_name": "Unknown", "supports_tiling": False},
-    "flol": {"display_name": "FLOL", "description": "快速真实低照度增强专家。", "task_type": "enhancement", "license_name": "MIT License in local source", "supports_tiling": False},
-    "lpdm": {"display_name": "LPDM", "description": "低照度增强后处理去噪器。", "task_type": "denoising", "license_name": "Unknown", "supports_tiling": False},
-    "mambair": {"display_name": "MambaIR", "description": "真实图像去噪和超分后处理工具。", "task_type": "denoising,super_resolution", "license_name": "Unknown", "supports_tiling": True},
+    "darkir": {
+        "display_name": "DarkIR",
+        "description": "Low-light noise and blur restoration expert.",
+        "task_type": "enhancement",
+        "license_name": "Unknown",
+        "supports_tiling": True,
+    },
+    "hvi_cidnet": {
+        "display_name": "HVI-CIDNet",
+        "description": "Color and brightness restoration expert.",
+        "task_type": "enhancement",
+        "license_name": "Unknown",
+        "supports_tiling": False,
+    },
+    "flol": {
+        "display_name": "FLOL",
+        "description": "Fast real low-light enhancement expert.",
+        "task_type": "enhancement",
+        "license_name": "MIT License in local source",
+        "supports_tiling": False,
+    },
+    "lpdm": {
+        "display_name": "LPDM",
+        "description": "Low-light enhancement postprocess denoiser.",
+        "task_type": "denoising",
+        "license_name": "Unknown",
+        "supports_tiling": False,
+    },
+    "nafnet": {
+        "display_name": "NAFNet",
+        "description": "Real image denoising postprocess model.",
+        "task_type": "denoising",
+        "license_name": "Unknown",
+        "supports_tiling": True,
+    },
+    "realesrgan": {
+        "display_name": "Real-ESRGAN",
+        "description": "Real-world image super-resolution postprocess model.",
+        "task_type": "super_resolution",
+        "license_name": "BSD-3-Clause in local source; verify third-party dependencies.",
+        "supports_tiling": True,
+    },
 }
 
 
@@ -115,29 +152,29 @@ class WorkerModelAdapter(ModelAdapter):
             for weight in found:
                 if weight["checkpoint_id"] == checkpoint_id:
                     return weight
-            raise RuntimeError(f"权重不可用: {checkpoint_id}")
+            raise RuntimeError(f"Weight is not available: {checkpoint_id}")
         defaults = [w for w in found if w.get("default")]
         if defaults:
             return defaults[0]
         if found:
             return found[0]
-        raise RuntimeError("未找到完整可验证的本地权重/配置")
+        raise RuntimeError("No complete local weight configuration was found")
 
     def check_installation(self) -> tuple[bool, str]:
         runtime_health = self._runtime_health()
         if not self.source_path or not Path(self.source_path).exists():
-            return False, f"源码目录不存在: {self.source_path or '(empty)'}"
+            return False, f"Source directory does not exist: {self.source_path or '(empty)'}"
         if "python_executable" in runtime_health.get("missing", []):
-            return False, f"Python环境不可用: {self.runtime_config.python_executable}"
+            return False, f"Python executable is not available: {self.runtime_config.python_executable}"
         if "worker_script" in runtime_health.get("missing", []):
-            return False, f"worker脚本不存在: {self.runtime_config.worker_script or '(empty)'}"
+            return False, f"Worker script does not exist: {self.runtime_config.worker_script or '(empty)'}"
         found = [w for w in self.discover_weights() if w["status"] == "found"]
         if not found:
-            return False, "未找到完整可验证的本地权重/配置"
+            return False, "No complete local weight configuration was found"
         cache = self._health_cache()
         if cache.get("available") is True:
-            return True, f"真实小图健康检查通过: {cache.get('checkpoint_id')}"
-        return False, "已找到基础资源，但尚未通过真实小图健康检查，不能标记ready"
+            return True, f"Real small-image health check passed: {cache.get('checkpoint_id')}"
+        return False, "Base files are present, but real small-image health check has not passed yet"
 
     def get_status(self) -> ModelStatus:
         installed, msg = self.check_installation()
@@ -156,7 +193,7 @@ class WorkerModelAdapter(ModelAdapter):
             weight_path=None,
             source_path=self.source_path,
             status_message=msg,
-            install_hint="配置 models.local.yaml 中的源码、Python环境、worker脚本、权重和配置；健康检查通过前不会参与正式任务。",
+            install_hint="Configure source path, Python executable, worker script, weights, and configs in models.local.yaml. The model is not ready until a real small-image health check passes.",
             capabilities={
                 "weights": self.discover_weights(),
                 "task_type": self.task_type,
@@ -203,7 +240,7 @@ class WorkerModelAdapter(ModelAdapter):
             "model_id": self.model_id,
             "checkpoint_id": weight["checkpoint_id"],
             "available": bool(response.success and not response.is_mock),
-            "message": "真实worker健康检查通过" if response.success and not response.is_mock else response.error or "worker健康检查失败",
+            "message": "Real worker health check passed" if response.success and not response.is_mock else response.error or "Worker health check failed",
             "runtime_ms": response.runtime_ms,
             "peak_memory_mb": response.peak_memory_mb,
             "metadata": response.metadata,
@@ -236,7 +273,7 @@ class WorkerModelAdapter(ModelAdapter):
             },
         ))
         if not response.success or response.is_mock:
-            raise RuntimeError(response.error or "worker推理失败")
+            raise RuntimeError(response.error or "Worker inference failed")
         return EnhancementResult(
             output_path=response.output_path or str(output),
             parameters=response.metadata,

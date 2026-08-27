@@ -51,6 +51,10 @@ postprocess_results = _entity_table("postprocess_results")
 artifact_lineages = _entity_table("artifact_lineages")
 model_health_records = _entity_table("model_health_records")
 ai_analysis_records = _entity_table("ai_analysis_records")
+retrieved_context_records = _entity_table("retrieved_context_records")
+region_constraint_records = _entity_table("region_constraint_records")
+workflow_events = _entity_table("workflow_events")
+graph_runs = _entity_table("graph_runs")
 
 ENTITY_TABLES = {
     "candidate_plan": candidate_plans,
@@ -63,6 +67,10 @@ ENTITY_TABLES = {
     "artifact_lineage": artifact_lineages,
     "model_health_record": model_health_records,
     "ai_analysis_record": ai_analysis_records,
+    "retrieved_context": retrieved_context_records,
+    "region_constraint": region_constraint_records,
+    "workflow_event": workflow_events,
+    "graph_run": graph_runs,
 }
 
 SCHEMA_VERSION = "v2_foundation_2026_08_01"

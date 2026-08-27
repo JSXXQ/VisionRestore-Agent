@@ -1,14 +1,18 @@
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+from .region import RegionConstraint
 
 AnalysisMode = Literal["local", "text_only", "multimodal"]
 ProviderId = Literal["disabled", "openai", "openai_compatible", "anthropic", "gemini"]
 Scene = Literal["indoor", "outdoor", "mixed", "synthetic", "unknown"]
-ModelId = Literal["retinexformer", "sci", "zero_dce"]
+ModelId = Literal["retinexformer", "darkir", "hvi_cidnet", "flol", "sci", "zero_dce"]
 
 CHECKPOINTS_BY_MODEL = {
     "retinexformer": {"lol_v2_real", "sdsd_indoor", "sdsd_outdoor", "ntire"},
+    "darkir": {"real_lsrw", "lol_blur", "lol_blur_w64", "all_lol"},
+    "hvi_cidnet": {"sice", "fivek", "lol_blur", "sid"},
+    "flol": {"lol_v2_real", "uhd_ll"},
     "sci": {"easy", "medium", "difficult"},
     "zero_dce": {"epoch99"},
 }
@@ -32,14 +36,14 @@ class ProviderStatus(ProviderHealth):
 
 class ModelSuggestion(BaseModel):
     model_id: ModelId
-    score: float = 0
+    score: float = Field(0, ge=0, le=100)
     reason: str = ""
 
 
 class CheckpointSuggestion(BaseModel):
     model_id: ModelId
     checkpoint_id: str
-    score: float = 0
+    score: float = Field(0, ge=0, le=100)
     reason: str = ""
 
     @model_validator(mode="after")
@@ -48,6 +52,16 @@ class CheckpointSuggestion(BaseModel):
         if self.checkpoint_id not in allowed:
             raise ValueError(f"checkpoint_id {self.checkpoint_id} is not valid for {self.model_id}")
         return self
+
+
+class RetrievedContext(BaseModel):
+    item_id: str = ""
+    source: str
+    title: str
+    content: str
+    score: float = 0
+    tags: list[str] = Field(default_factory=list)
+    matched_terms: list[str] = Field(default_factory=list)
 
 
 class MultimodalAnalysisResult(BaseModel):
@@ -59,6 +73,7 @@ class MultimodalAnalysisResult(BaseModel):
     main_subjects: list[str] = Field(default_factory=list)
     important_light_sources: list[str] = Field(default_factory=list)
     critical_regions: list[str] = Field(default_factory=list)
+    region_constraints: list[RegionConstraint] = Field(default_factory=list)
     interpreted_intent: list[str] = Field(default_factory=list)
     model_candidates: list[ModelSuggestion] = Field(default_factory=list)
     checkpoint_candidates: list[CheckpointSuggestion] = Field(default_factory=list)
@@ -76,6 +91,8 @@ class MultimodalAnalysisResult(BaseModel):
     analysis_mode: AnalysisMode = "local"
     sent_image: bool = False
     runtime_ms: int = 0
+    retrieved_context: list[RetrievedContext] = Field(default_factory=list)
+    prompt_context: dict = Field(default_factory=dict)
 
 
 class AIAnalyzeRequest(BaseModel):

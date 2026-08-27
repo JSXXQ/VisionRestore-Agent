@@ -5,9 +5,25 @@ from .image import ImageAnalysisResult
 from .intent import UserIntent
 
 TaskStatus = Literal[
-    "queued", "analyzing", "parsing_intent", "inspecting_hardware", "routing_model",
-    "routing_checkpoint", "loading_model", "running", "evaluating", "fallback_running",
-    "selecting_result", "awaiting_denoise_confirmation", "denoising", "denoise_evaluating", "awaiting_sr_confirmation", "super_resolving", "sr_evaluating", "rolling_back", "finalizing", "completed", "failed", "cancelled"
+    "queued",
+    "analyzing", "analyzing_input",
+    "parsing_intent",
+    "running_multimodal_analysis",
+    "inspecting_hardware",
+    "routing_model", "routing_checkpoint",
+    "planning_candidates",
+    "loading_model", "running", "fallback_running", "running_candidates",
+    "evaluating", "evaluating_candidates",
+    "ranking_candidates",
+    "selecting_result", "selecting_best_candidate",
+    "diagnosing_residual_degradation",
+    "awaiting_denoise_confirmation",
+    "denoising", "denoise_evaluating", "evaluating_denoise",
+    "awaiting_sr_confirmation",
+    "super_resolving", "sr_evaluating", "evaluating_super_resolution",
+    "rolling_back",
+    "finalizing",
+    "completed", "failed", "cancelled",
 ]
 TaskMode = Literal["auto", "manual", "compare"]
 Priority = Literal["quality", "balanced", "speed"]
@@ -55,12 +71,16 @@ class RetryRecord(BaseModel):
     expected_improvement: str = ""
 
 class CandidateResult(BaseModel):
+    candidate_id: str | None = None
     model_id: str
     checkpoint_id: str | None = None
+    role: str = "enhancement"
     output_file_id: str | None = None
     output_url: str | None = None
     status: str
     score: float = 0
+    final_score: float | None = None
+    planning_score: float | None = None
     metrics: dict = Field(default_factory=dict)
     parameters: dict = Field(default_factory=dict)
     runtime_ms: int = 0
@@ -69,10 +89,16 @@ class CandidateResult(BaseModel):
     adapter_class: str | None = None
     checkpoint_path: str | None = None
     checkpoint_sha256: str | None = None
+    worker_python: str | None = None
     device: str | None = None
     precision: str | None = None
+    input_path: str | None = None
+    output_path: str | None = None
     input_sha256: str | None = None
     output_sha256: str | None = None
+    input_size: list[int] | None = None
+    output_size: list[int] | None = None
+    warnings: list[str] = Field(default_factory=list)
     error: str | None = None
 
 class TaskRecord(BaseModel):
@@ -83,14 +109,28 @@ class TaskRecord(BaseModel):
     mode: TaskMode
     priority: Priority
     analysis_mode: AnalysisMode = "local"
+    parameters: dict = Field(default_factory=dict)
     progress: float = 0
+    task_mode: str = "multi_candidate"
+    workflow_engine: str = "legacy"
+    workflow_thread_id: str | None = None
+    workflow_version: str | None = None
+    workflow_events: list[dict] = Field(default_factory=list)
+    messages: list[dict] = Field(default_factory=list)
+    pending_confirmation: dict | None = None
     user_intent: UserIntent | None = None
     ai_analysis: MultimodalAnalysisResult | None = None
+    retrieved_context: list[dict] = Field(default_factory=list)
     hardware_info: dict | None = None
     model_candidates: list[dict] = Field(default_factory=list)
     checkpoint_candidates: list[dict] = Field(default_factory=list)
+    region_constraints: list[dict] = Field(default_factory=list)
     analysis: ImageAnalysisResult | None = None
     plan: EnhancementPlan | None = None
+    candidate_plan: dict | None = None
+    candidate_ranking: dict | None = None
+    postprocess_recommendation: dict | None = None
+    postprocess_history: list[dict] = Field(default_factory=list)
     logs: list[str] = Field(default_factory=list)
     retries: list[RetryRecord] = Field(default_factory=list)
     candidates: list[CandidateResult] = Field(default_factory=list)

@@ -13,7 +13,10 @@ dependencies = [
   "pillow>=10.0",
   "sqlalchemy>=2.0",
   "requests>=2.31",
+  "einops==0.6.1",
   "PyYAML>=6.0",
+  "langgraph>=1.0,<2.0",
+  "langgraph-checkpoint-sqlite>=3.0,<4.0",
 ]
 
 [project.optional-dependencies]

@@ -1,0 +1,312 @@
+version: "2.2"
+
+score_fusion:
+  local_weight: 0.50
+  llm_weight: 0.50
+  local_min: 0
+  local_max: 100
+  llm_min: 0
+  llm_max: 100
+
+eligible_models:
+  - retinexformer
+  - darkir
+  - hvi_cidnet
+  - flol
+  - sci
+
+model_priors:
+  retinexformer:
+    role: general_real_low_light_restoration
+    score: 36
+    priority_adjustments: {quality: 5, extreme_quality: 6, balanced: 3, speed: -8}
+    evidence: "真实低照度恢复的稳定基线，擅长非均匀照明与暗部恢复。"
+  darkir:
+    role: noise_blur_joint_restoration
+    score: 32
+    priority_adjustments: {quality: 5, extreme_quality: 6, balanced: 2, speed: -10}
+    evidence: "低照度噪声与模糊联合恢复能力较强。"
+  hvi_cidnet:
+    role: color_luminance_restoration
+    score: 31
+    priority_adjustments: {quality: 4, extreme_quality: 5, balanced: 2, speed: -9}
+    evidence: "色彩保持、颜色偏移修复和亮度恢复能力较强。"
+  flol:
+    role: fast_high_resolution_low_vram_restoration
+    score: 25
+    priority_adjustments: {quality: 0, extreme_quality: -2, balanced: 5, speed: 34}
+    evidence: "面向快速、高分辨率和较低显存压力的低照度增强。"
+  sci:
+    role: lightweight_fallback_restoration
+    score: 14
+    priority_adjustments: {quality: -2, extreme_quality: -3, balanced: 1, speed: 10}
+    evidence: "轻量级可用性兜底，不作为质量模式的主要专家。"
+
+input_match:
+  max_score: 48
+  signals:
+    illumination:
+      label: 低照度严重度
+      metrics:
+        - {name: mean_luminance, direction: lower, healthy: 115, severe: 25, weight: 0.65}
+        - {name: dark_pixel_ratio, direction: higher, healthy: 0.15, severe: 0.70, weight: 0.35}
+      model_points: {retinexformer: 20, darkir: 13, hvi_cidnet: 16, flol: 12, sci: 8}
+    noise_level:
+      label: 噪声严重度
+      metrics:
+        - {name: noise_estimate, direction: higher, healthy: 4, severe: 20, weight: 1.0}
+      model_points: {retinexformer: 8, darkir: 19, hvi_cidnet: 6, flol: 3, sci: 3}
+    blur_level:
+      label: 模糊严重度
+      metrics:
+        - {name: laplacian_sharpness, direction: lower, healthy: 180, severe: 35, weight: 1.0}
+      model_points: {retinexformer: 5, darkir: 16, hvi_cidnet: 4, flol: 3, sci: 2}
+    color_shift:
+      label: 色偏严重度
+      metrics:
+        - {name: color_cast_index, direction: higher, healthy: 0.03, severe: 0.30, weight: 1.0}
+      model_points: {retinexformer: 7, darkir: 4, hvi_cidnet: 19, flol: 4, sci: 3}
+    detail_loss:
+      label: 细节损失严重度
+      metrics:
+        - {name: image_entropy, direction: lower, healthy: 6.8, severe: 4.2, weight: 0.45}
+        - {name: laplacian_sharpness, direction: lower, healthy: 180, severe: 35, weight: 0.55}
+      model_points: {retinexformer: 11, darkir: 13, hvi_cidnet: 9, flol: 6, sci: 3}
+    high_resolution:
+      label: 高分辨率输入压力
+      metrics:
+        - {name: total_pixels, direction: higher, healthy: 2000000, severe: 8000000, weight: 1.0}
+      model_points: {retinexformer: 1, darkir: 0, hvi_cidnet: 0, flol: 12, sci: 5}
+
+  intent_preferences:
+    reduce_noise: {darkir: 7, retinexformer: 2}
+    preserve_color: {hvi_cidnet: 7, retinexformer: 2}
+    natural_result: {hvi_cidnet: 5, retinexformer: 3}
+    protect_highlights: {retinexformer: 4, hvi_cidnet: 2}
+    recover_shadows: {retinexformer: 5, hvi_cidnet: 3}
+    low_memory: {flol: 8, sci: 4}
+
+checkpoint_selection:
+  score_min: 0
+  score_max: 100
+  semantic_scene_min_confidence: 0.65
+  defaults:
+    retinexformer: lol_v2_real
+    darkir: real_lsrw
+    hvi_cidnet: sice
+    flol: lol_v2_real
+    sci: medium
+  models:
+    retinexformer:
+      default: lol_v2_real
+      checkpoints:
+        lol_v2_real:
+          base_score: 46
+          evidence: "真实低照度通用稳定权重，场景未知时优先作为安全基线。"
+          priority_adjustments: {quality: 5, extreme_quality: 6, balanced: 4, speed: 1}
+          scene_adjustments: {unknown: 12, mixed: 8, indoor: 2, outdoor: 2}
+          preference_adjustments: {natural_result: 5, recover_shadows: 5, protect_highlights: 4}
+          signal_points: {illumination: 8, noise_level: 3, detail_loss: 6}
+        sdsd_indoor:
+          base_score: 26
+          evidence: "SDSD 室内低照度权重，适合房间、走廊和商场等室内场景。"
+          priority_adjustments: {quality: 6, extreme_quality: 7, balanced: 3, speed: -4}
+          scene_adjustments: {indoor: 34, mixed: 4, unknown: 0, outdoor: -12}
+          preference_adjustments: {recover_shadows: 4, natural_result: 3}
+          keywords: ["室内", "房间", "走廊", "商场", "indoor", "room"]
+          keyword_bonus: 12
+          signal_points: {illumination: 9, detail_loss: 5}
+        sdsd_outdoor:
+          base_score: 26
+          evidence: "SDSD 室外低照度权重，适合街道、道路、城市与户外夜景。"
+          priority_adjustments: {quality: 6, extreme_quality: 7, balanced: 3, speed: -4}
+          scene_adjustments: {outdoor: 34, mixed: 4, unknown: 0, indoor: -12}
+          preference_adjustments: {protect_highlights: 5, natural_result: 3}
+          keywords: ["室外", "户外", "街道", "道路", "城市", "outdoor", "street", "city"]
+          keyword_bonus: 12
+          signal_points: {illumination: 9, detail_loss: 5}
+        ntire:
+          base_score: 24
+          evidence: "质量优先的通用高质量权重，耗时与资源约束更严格。"
+          priority_adjustments: {quality: 20, extreme_quality: 24, balanced: -2, speed: -22}
+          scene_adjustments: {unknown: 2, mixed: 2, indoor: 1, outdoor: 1}
+          preference_adjustments: {allow_long_runtime: 12, strong_enhancement: 6, recover_shadows: 4}
+          keywords: ["ntire", "最高质量", "极致质量", "quality first"]
+          keyword_bonus: 16
+          signal_points: {illumination: 7, detail_loss: 14}
+          min_gpu_memory_mb: 4500
+          unknown_gpu_penalty: -8
+
+    darkir:
+      default: real_lsrw
+      checkpoints:
+        real_lsrw:
+          base_score: 44
+          evidence: "真实相机夜景与噪声/模糊混合退化的通用 DarkIR 权重。"
+          priority_adjustments: {quality: 4, extreme_quality: 5, balanced: 5, speed: 2}
+          scene_adjustments: {unknown: 10, outdoor: 8, mixed: 6, indoor: 3}
+          preference_adjustments: {reduce_noise: 6, natural_result: 3}
+          keywords: ["真实", "实拍", "夜景", "real", "camera", "night"]
+          keyword_bonus: 8
+          signal_points: {illumination: 8, noise_level: 12, blur_level: 7, detail_loss: 5}
+        lol_blur:
+          base_score: 26
+          evidence: "低照度模糊专项权重，面向模糊占主导且容量要求适中的输入。"
+          priority_adjustments: {quality: 7, extreme_quality: 8, balanced: 4, speed: -4}
+          scene_adjustments: {unknown: 2, outdoor: 3, mixed: 2}
+          preference_adjustments: {reduce_noise: 3, recover_shadows: 2}
+          keywords: ["模糊", "运动模糊", "拖影", "blur", "motion blur"]
+          keyword_bonus: 10
+          signal_points: {noise_level: 8, blur_level: 38, detail_loss: 8}
+        lol_blur_w64:
+          base_score: 16
+          evidence: "更高容量的严重低照度去模糊权重，只在质量优先和资源允许时竞争。"
+          priority_adjustments: {quality: 18, extreme_quality: 22, balanced: -8, speed: -35}
+          scene_adjustments: {unknown: 1, outdoor: 2, mixed: 1}
+          preference_adjustments: {allow_long_runtime: 10, reduce_noise: 4}
+          keywords: ["严重模糊", "强烈模糊", "重度模糊", "severe blur"]
+          keyword_bonus: 16
+          signal_points: {noise_level: 7, blur_level: 42, detail_loss: 16}
+          min_gpu_memory_mb: 6000
+          requires_cuda: true
+          unknown_gpu_penalty: -12
+        all_lol:
+          base_score: 32
+          evidence: "LOL 域通用低照度权重，适合数据集风格的照度与噪声混合退化。"
+          priority_adjustments: {quality: 3, extreme_quality: 4, balanced: 5, speed: 1}
+          scene_adjustments: {synthetic: 18, unknown: 1}
+          preference_adjustments: {recover_shadows: 4, reduce_noise: 3}
+          keywords: ["lol-v1", "lol-v2", "lol数据集", "lol 数据集", "all-lol", "all_lol"]
+          keyword_bonus: 25
+          signal_points: {illumination: 15, noise_level: 10, detail_loss: 5}
+
+    hvi_cidnet:
+      default: sice
+      checkpoints:
+        sice:
+          base_score: 44
+          evidence: "曝光与色彩联合恢复的稳定通用 HVI-CIDNet 权重。"
+          priority_adjustments: {quality: 5, extreme_quality: 6, balanced: 5, speed: 1}
+          scene_adjustments: {unknown: 8, mixed: 6, indoor: 4, outdoor: 4}
+          preference_adjustments: {preserve_color: 7, protect_highlights: 5, recover_shadows: 4}
+          signal_points: {illumination: 10, color_shift: 20, detail_loss: 4}
+        fivek:
+          base_score: 28
+          evidence: "摄影自然色彩与白平衡优化权重，适合自然观感和人像/摄影偏好。"
+          priority_adjustments: {quality: 7, extreme_quality: 7, balanced: 4, speed: -5}
+          scene_adjustments: {indoor: 4, outdoor: 3, unknown: 1}
+          preference_adjustments: {preserve_color: 10, natural_result: 18, protect_highlights: 4}
+          keywords: ["摄影", "照片", "人像", "肤色", "白平衡", "photo", "portrait", "fivek"]
+          keyword_bonus: 15
+          signal_points: {color_shift: 12, detail_loss: 5}
+        lol_blur:
+          base_score: 24
+          evidence: "兼顾色彩的低照度模糊恢复权重。"
+          priority_adjustments: {quality: 7, extreme_quality: 8, balanced: 3, speed: -5}
+          scene_adjustments: {unknown: 1, outdoor: 2, mixed: 2}
+          preference_adjustments: {preserve_color: 6, reduce_noise: 2}
+          keywords: ["模糊", "拖影", "blur", "motion blur"]
+          keyword_bonus: 9
+          signal_points: {blur_level: 35, color_shift: 12, detail_loss: 8}
+        sid:
+          base_score: 16
+          evidence: "极暗输入与 RAW 风格噪声恢复权重。"
+          priority_adjustments: {quality: 8, extreme_quality: 12, balanced: 1, speed: -12}
+          scene_adjustments: {unknown: 1, indoor: 2, outdoor: 2}
+          preference_adjustments: {strong_enhancement: 10, reduce_noise: 6, allow_long_runtime: 4}
+          keywords: ["极暗", "几乎全黑", "raw", "sid", "extreme dark"]
+          keyword_bonus: 20
+          signal_points: {illumination: 45, noise_level: 15, color_shift: 5}
+
+    flol:
+      default: lol_v2_real
+      checkpoints:
+        lol_v2_real:
+          base_score: 48
+          evidence: "普通分辨率真实低照度的快速 FLOL 权重。"
+          priority_adjustments: {quality: 1, extreme_quality: -2, balanced: 7, speed: 12}
+          scene_adjustments: {unknown: 5, indoor: 3, outdoor: 3, mixed: 3}
+          preference_adjustments: {low_memory: 8}
+          signal_points: {illumination: 7, high_resolution: -10}
+        uhd_ll:
+          base_score: 28
+          evidence: "UHD-LL 高分辨率低照度权重，输入分辨率压力越高越优先。"
+          priority_adjustments: {quality: 3, extreme_quality: 2, balanced: 7, speed: 12}
+          scene_adjustments: {unknown: 2, indoor: 2, outdoor: 2, mixed: 2}
+          preference_adjustments: {low_memory: 8, preserve_color: 2}
+          keywords: ["超高清", "高分辨率", "uhd", "4k", "8k"]
+          keyword_bonus: 16
+          signal_points: {illumination: 6, high_resolution: 48, detail_loss: 4}
+
+    sci:
+      default: medium
+      checkpoints:
+        easy:
+          base_score: 52
+          evidence: "轻度低照度的快速 SCI 权重；退化加重时内部优先级下降。"
+          priority_adjustments: {quality: -4, extreme_quality: -6, balanced: 3, speed: 8}
+          scene_adjustments: {unknown: 2, indoor: 2, outdoor: 2}
+          preference_adjustments: {low_memory: 6}
+          signal_points: {illumination: -38, noise_level: -8, detail_loss: -5}
+        medium:
+          base_score: 42
+          evidence: "中等低照度的 SCI 通用平衡权重。"
+          priority_adjustments: {quality: 1, extreme_quality: 0, balanced: 5, speed: 5}
+          scene_adjustments: {unknown: 3, indoor: 2, outdoor: 2}
+          preference_adjustments: {low_memory: 5}
+          signal_points: {illumination: 8, noise_level: 3, detail_loss: 3}
+        difficult:
+          base_score: 22
+          evidence: "严重低照度的 SCI 强增强权重。"
+          priority_adjustments: {quality: 4, extreme_quality: 6, balanced: 2, speed: -2}
+          scene_adjustments: {unknown: 1, indoor: 1, outdoor: 1}
+          preference_adjustments: {strong_enhancement: 8, recover_shadows: 6}
+          keywords: ["极暗", "严重低照度", "difficult", "几乎全黑"]
+          keyword_bonus: 12
+          signal_points: {illumination: 40, noise_level: 12, detail_loss: 8}
+
+    nafnet:
+      default: sidd_width32
+      checkpoints:
+        sidd_width32:
+          base_score: 52
+          evidence: "NAFNet width32 是资源开销较低的稳定去噪权重。"
+          priority_adjustments: {quality: 2, extreme_quality: 0, balanced: 7, speed: 12}
+          preference_adjustments: {reduce_noise: 6, low_memory: 10}
+          signal_points: {noise_level: 14, detail_loss: -4}
+        sidd_width64:
+          base_score: 30
+          evidence: "NAFNet width64 是质量优先的高容量去噪权重。"
+          priority_adjustments: {quality: 16, extreme_quality: 20, balanced: 2, speed: -18}
+          preference_adjustments: {reduce_noise: 10, allow_long_runtime: 8}
+          signal_points: {noise_level: 32, detail_loss: 8}
+          min_gpu_memory_mb: 6000
+          requires_cuda: true
+          unknown_gpu_penalty: -15
+
+    realesrgan:
+      default: realesrgan_x2plus
+      checkpoints:
+        realesrgan_x2plus:
+          base_score: 55
+          evidence: "Real-ESRGAN x2 权重，仅参与 x2 超分内部选择。"
+          context_requirements: {scale: [2]}
+          priority_adjustments: {quality: 5, extreme_quality: 4, balanced: 8, speed: 12}
+          preference_adjustments: {natural_result: 4, low_memory: 6}
+          signal_points: {detail_loss: 14, high_resolution: -8}
+        realesrgan_x4plus:
+          base_score: 48
+          evidence: "Real-ESRGAN x4plus 权重，适合明确要求 x4 且细节损失明显的输入。"
+          context_requirements: {scale: [4]}
+          priority_adjustments: {quality: 12, extreme_quality: 15, balanced: 3, speed: -12}
+          preference_adjustments: {allow_long_runtime: 8}
+          signal_points: {detail_loss: 24, noise_level: -8}
+          min_gpu_memory_mb: 4000
+          requires_cuda: true
+        realesr_general_x4v3:
+          base_score: 44
+          evidence: "RealESR-general-x4v3 权重，仅参与 x4，并在残余噪声存在时优先考虑自然稳定性。"
+          context_requirements: {scale: [4]}
+          priority_adjustments: {quality: 7, extreme_quality: 8, balanced: 8, speed: 2}
+          preference_adjustments: {natural_result: 10, reduce_noise: 8}
+          signal_points: {detail_loss: 16, noise_level: 15, color_shift: 5}

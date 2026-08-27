@@ -1,6 +1,18 @@
 ﻿model_routing:
   retinexformer_quality_bonus: 45
   retinexformer_balanced_gpu_bonus: 28
+  darkir_quality_bonus: 24
+  darkir_degradation_bonus: 42
+  darkir_noise_threshold: 12
+  darkir_blur_sharpness_threshold: 80
+  hvi_quality_bonus: 22
+  hvi_color_bonus: 40
+  hvi_color_cast_threshold: 0.12
+  flol_balanced_bonus: 18
+  flol_speed_bonus: 55
+  flol_low_memory_bonus: 35
+  flol_high_resolution_bonus: 30
+  flol_high_resolution_edge: 2500
   sci_speed_bonus: 45
   sci_cpu_bonus: 40
   sci_low_memory_bonus: 35

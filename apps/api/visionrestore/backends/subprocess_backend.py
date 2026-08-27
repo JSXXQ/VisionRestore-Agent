@@ -1,11 +1,12 @@
 ﻿import json
+import os
 import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
-from visionrestore.core.config import get_settings
+from visionrestore.core.config import PROJECT_ROOT, get_settings
 from visionrestore.schemas.worker import WorkerRequest, WorkerResponse
 
 
@@ -61,10 +62,24 @@ class SubprocessBackend:
         stderr_path = task_dir / "stderr.log"
         request_path.write_text(safe_request.model_dump_json(indent=2), encoding="utf-8")
         cmd = [self.runtime.python_executable, self.runtime.worker_script, "--request", str(request_path), "--response", str(response_path)]
+        process_env = os.environ.copy()
+        local_packages = PROJECT_ROOT / "data" / "python_packages"
+        if local_packages.exists():
+            existing_pythonpath = process_env.get("PYTHONPATH", "")
+            process_env["PYTHONPATH"] = str(local_packages) + (
+                os.pathsep + existing_pythonpath if existing_pythonpath else ""
+            )
         started = time.perf_counter()
         return_code: int | None = None
         try:
-            self._process = subprocess.Popen(cmd, cwd=str(self.runtime.source_path), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self._process = subprocess.Popen(
+                cmd,
+                cwd=str(self.runtime.source_path),
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=process_env,
+            )
             stdout, stderr = self._process.communicate(timeout=self.runtime.timeout_seconds)
             return_code = self._process.returncode
             stdout_path.write_text(stdout or "", encoding="utf-8")

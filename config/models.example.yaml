@@ -1,93 +1,185 @@
-﻿external_python: "<path-to-cuda-pytorch-python.exe>"
-background_image_path: "<path-to-background-image>"
-ui_reference_image_path: "<path-to-ui-reference-image>"
+external_python: "<path-to-cuda-pytorch-python.exe>"
+background_image_path: "背景图.png"
+ui_reference_image_path: "UI参考图.png"
+
 models:
   retinexformer:
-    source_path: "<Retinexformer source path>"
+    source_path: "third_party/retinexformer"
+    auto_route: true
     weights:
       lol_v2_real:
-        path: "<LOL_v2_real.pth>"
-        config_path: "<RetinexFormer_LOL_v2_real.yml>"
+        path: "weights/retinexformer/lol_v2_real.pth"
+        config_path: "third_party/retinexformer/Options/RetinexFormer_LOL_v2_real.yml"
+        default: true
+        auto_route: true
       sdsd_indoor:
-        path: "<SDSD_indoor.pth>"
-        config_path: "<RetinexFormer_SDSD_indoor.yml>"
+        path: "weights/retinexformer/sdsd_indoor.pth"
+        config_path: "third_party/retinexformer/Options/RetinexFormer_SDSD_indoor.yml"
+        auto_route: true
       sdsd_outdoor:
-        path: "<SDSD_outdoor.pth>"
-        config_path: "<RetinexFormer_SDSD_outdoor.yml>"
+        path: "weights/retinexformer/sdsd_outdoor.pth"
+        config_path: "third_party/retinexformer/Options/RetinexFormer_SDSD_outdoor.yml"
+        auto_route: true
       ntire:
-        path: "<NTIRE.pth>"
-        config_path: "<RetinexFormer_NTIRE.yml>"
-  sci:
-    source_path: "<SCI CVPR source path>"
-    weights:
-      easy:
-        path: "<easy.pt>"
-      medium:
-        path: "<medium.pt>"
-      difficult:
-        path: "<difficult.pt>"
-  zero_dce:
-    source_path: "<Zero-DCE_code source path>"
-    weights:
-      epoch99:
-        path: "<Epoch99.pth>"
+        path: "weights/retinexformer/ntire.pth"
+        config_path: "third_party/retinexformer/Options/RetinexFormer_NTIRE.yml"
+        auto_route: true
+
   darkir:
-    source_path: "<DarkIR source path>"
-    python_executable: "<path-to-darkir-python.exe>"
-    environment_name: "darkir"
+    source_path: "third_party/darkir"
+    python_executable: "<path-to-cuda-pytorch-python.exe>"
+    environment_name: "pytorch"
     execution_backend: "subprocess"
     worker_script: "workers/darkir_worker.py"
     device: "cuda:0"
-    precision: "fp16"
-    timeout_seconds: 300
-    supports_fp16: true
+    precision: "fp32"
     supports_tiling: true
     max_concurrency: 1
-    weight_profiles: []
+    weight_profiles:
+      - checkpoint_id: "real_lsrw"
+        path: "weights/darkir/real_lsrw.pt"
+        config_path: "third_party/darkir/options/inference/real_lsrw.yml"
+        default: true
+        auto_route: true
+      - checkpoint_id: "lol_blur"
+        path: "weights/darkir/lol_blur.pt"
+        config_path: "third_party/darkir/options/test/LOLBlur.yml"
+        auto_route: true
+      - checkpoint_id: "lol_blur_w64"
+        path: "weights/darkir/lol_blur_w64.pt"
+        config_path: "third_party/darkir/options/inference/LOLBlur.yml"
+        auto_route: true
+      - checkpoint_id: "all_lol"
+        path: "weights/darkir/all_lol.pt"
+        config_path: "third_party/darkir/options/test/AllLOL.yml"
+        auto_route: true
+
   hvi_cidnet:
-    source_path: "<HVI-CIDNet source path>"
-    python_executable: "<path-to-hvi-python.exe>"
-    environment_name: "hvi"
+    source_path: "third_party/hvi_cidnet"
+    python_executable: "<path-to-cuda-pytorch-python.exe>"
+    environment_name: "pytorch"
     execution_backend: "subprocess"
     worker_script: "workers/hvi_cidnet_worker.py"
     device: "cuda:0"
-    precision: "fp16"
-    timeout_seconds: 300
-    supports_fp16: true
+    precision: "fp32"
     max_concurrency: 1
-    weight_profiles: []
+    weight_profiles:
+      - checkpoint_id: "sice"
+        path: "weights/hvi_cidnet/sice.pth"
+        default: true
+        auto_route: true
+      - checkpoint_id: "fivek"
+        path: "weights/hvi_cidnet/fivek.pth"
+        auto_route: true
+      - checkpoint_id: "lol_blur"
+        path: "weights/hvi_cidnet/lol_blur.pth"
+        auto_route: true
+      - checkpoint_id: "sid"
+        path: "weights/hvi_cidnet/sid.pth"
+        auto_route: true
+
   flol:
-    source_path: "<FLOL source path>"
-    python_executable: "<path-to-flol-python.exe>"
-    environment_name: "flol"
+    source_path: "third_party/flol"
+    python_executable: "<path-to-cuda-pytorch-python.exe>"
+    environment_name: "pytorch"
     execution_backend: "subprocess"
     worker_script: "workers/flol_worker.py"
     device: "cuda:0"
-    precision: "fp16"
-    timeout_seconds: 240
-    supports_fp16: true
+    precision: "fp32"
     max_concurrency: 1
-    weight_profiles: []
+    weight_profiles:
+      - checkpoint_id: "lol_v2_real"
+        path: "weights/flol/lol_v2_real.pt"
+        config_path: "third_party/flol/options/LOLv2-Real.yml"
+        default: true
+        auto_route: true
+      - checkpoint_id: "uhd_ll"
+        path: "weights/flol/uhd_ll.pt"
+        config_path: "third_party/flol/options/UHDLL.yml"
+        auto_route: true
+
+  sci:
+    source_path: "third_party/sci/CVPR"
+    auto_route: true
+    weights:
+      easy:
+        path: "weights/sci/easy.pt"
+        auto_route: true
+      medium:
+        path: "weights/sci/medium.pt"
+        default: true
+        auto_route: true
+      difficult:
+        path: "weights/sci/difficult.pt"
+        auto_route: true
+
+  zero_dce:
+    source_path: "third_party/zero_dce/Zero-DCE_code"
+    auto_route: false
+    weights:
+      epoch99:
+        path: "weights/zero_dce/epoch99.pth"
+        default: true
+        auto_route: false
+
   lpdm:
-    source_path: "<LPDM source path>"
-    python_executable: "<path-to-lpdm-python.exe>"
-    environment_name: "lpdm"
+    source_path: "third_party/lpdm"
+    python_executable: "<path-to-cuda-pytorch-python.exe>"
+    environment_name: "pytorch"
     execution_backend: "subprocess"
     worker_script: "workers/lpdm_worker.py"
     device: "cuda:0"
-    precision: "fp16"
-    timeout_seconds: 300
-    supports_fp16: true
+    precision: "fp32"
     max_concurrency: 1
-    weight_profiles: []
-  mambair:
-    source_path: "<MambaIR source path>"
-    python_executable: "<path-to-mambair-python.exe>"
-    environment_name: "mambair"
+    auto_route: false
+    weight_profiles:
+      - checkpoint_id: "lpdm_lol"
+        path: "weights/lpdm/lpdm_lol.ckpt"
+        config_path: "third_party/lpdm/pre_weight/lpdm_lol.yaml"
+        default: true
+        auto_route: false
+
+  nafnet:
+    source_path: "third_party/nafnet"
+    python_executable: "<path-to-cuda-pytorch-python.exe>"
+    environment_name: "pytorch"
     execution_backend: "subprocess"
-    worker_script: "workers/mambair_worker.py"
+    worker_script: "workers/nafnet_worker.py"
+    device: "cuda:0"
+    precision: "fp32"
+    supports_tiling: true
+    max_concurrency: 1
+    auto_route: false
+    weight_profiles:
+      - checkpoint_id: "sidd_width32"
+        path: "weights/nafnet/sidd_width32.pth"
+        config_path: "third_party/nafnet/options/test/SIDD/NAFNet-width32.yml"
+        default: true
+        auto_route: false
+      - checkpoint_id: "sidd_width64"
+        path: "weights/nafnet/sidd_width64.pth"
+        config_path: "third_party/nafnet/options/test/SIDD/NAFNet-width64.yml"
+        auto_route: false
+
+  realesrgan:
+    source_path: "third_party/realesrgan"
+    python_executable: "<path-to-cuda-pytorch-python.exe>"
+    environment_name: "pytorch"
+    execution_backend: "subprocess"
+    worker_script: "workers/realesrgan_worker.py"
     device: "cuda:0"
     precision: "fp16"
-    timeout_seconds: 300
-    supports_fp16: true
-    weight_profiles: []
+    supports_tiling: true
+    max_concurrency: 1
+    auto_route: false
+    weight_profiles:
+      - checkpoint_id: "realesrgan_x2plus"
+        path: "weights/realesrgan/realesrgan_x2plus.pth"
+        default: true
+        auto_route: false
+      - checkpoint_id: "realesrgan_x4plus"
+        path: "weights/realesrgan/realesrgan_x4plus.pth"
+        auto_route: false
+      - checkpoint_id: "realesr_general_x4v3"
+        path: "weights/realesrgan/realesr_general_x4v3.pth"
+        auto_route: false

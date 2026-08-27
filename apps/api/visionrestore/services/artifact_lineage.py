@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 
 from visionrestore.core.config import get_settings
 from visionrestore.schemas.artifact import ArtifactLineage, ArtifactRecord
@@ -20,28 +20,35 @@ class ArtifactLineageService:
     def from_task(self, task) -> ArtifactLineage:
         root = self.create_task_layout(task.task_id)
         candidates = []
+        postprocess = []
         for index, item in enumerate(task.candidates, start=1):
-            candidate_dir = root / "candidates" / f"candidate_{index:02d}"
-            candidate_dir.mkdir(parents=True, exist_ok=True)
-            candidates.append(ArtifactRecord(
-                role="candidate",
+            role = "postprocess" if (item.parameters or {}).get("role") == "postprocess" else "candidate"
+            item_dir = root / ("postprocess" if role == "postprocess" else "candidates") / f"candidate_{index:02d}"
+            item_dir.mkdir(parents=True, exist_ok=True)
+            record = ArtifactRecord(
+                role=role,
                 file_id=item.output_file_id,
                 url=item.output_url,
                 model_id=item.model_id,
                 checkpoint_id=item.checkpoint_id,
                 sha256=item.output_sha256,
-                metadata={"score": item.score, "status": item.status, "candidate_dir": str(candidate_dir)},
-            ))
+                metadata={"score": item.score, "status": item.status, "candidate_dir": str(item_dir), **(item.parameters or {})},
+            )
+            if role == "postprocess":
+                postprocess.append(record)
+            else:
+                candidates.append(record)
         selected = None
         if task.best_result:
+            selected_role = "postprocess" if (task.best_result.parameters or {}).get("role") == "postprocess" else "best_enhanced"
             selected = ArtifactRecord(
-                role="best_enhanced",
+                role=selected_role,
                 file_id=task.best_result.output_file_id,
                 url=task.best_result.output_url,
                 model_id=task.best_result.model_id,
                 checkpoint_id=task.best_result.checkpoint_id,
                 sha256=task.best_result.output_sha256,
-                metadata={"score": task.best_result.score},
+                metadata={"score": task.best_result.score, **(task.best_result.parameters or {})},
             )
         reports = []
         if task.report_file_id:
@@ -52,6 +59,7 @@ class ArtifactLineageService:
             input=ArtifactRecord(role="original", file_id=task.image_id),
             candidates=candidates,
             selected=selected,
+            postprocess=postprocess,
             final=selected,
             reports=reports,
             logs_dir=str(root / "logs"),

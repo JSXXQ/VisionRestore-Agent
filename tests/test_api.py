@@ -1,4 +1,4 @@
-﻿from fastapi.testclient import TestClient
+from fastapi.testclient import TestClient
 from visionrestore.main import app
 
 
@@ -24,7 +24,7 @@ def test_v2_models_are_grouped_and_count_real_ready_only():
     assert "enhancement" in data["groups"]
     assert "postprocess" in data["groups"]
     ids = {item["model_id"] for item in data["models"]}
-    assert {"retinexformer", "darkir", "hvi_cidnet", "flol", "sci", "zero_dce", "lpdm", "mambair"}.issubset(ids)
+    assert {"retinexformer", "darkir", "hvi_cidnet", "flol", "sci", "zero_dce", "lpdm", "nafnet"}.issubset(ids)
     assert data["ready_count"] >= 0
 
 

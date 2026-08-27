@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Activity,
@@ -20,6 +20,7 @@ import {
   Monitor,
   Play,
   RefreshCw,
+  RotateCcw,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -51,7 +52,7 @@ type ModelStatus = {
   status_message: string;
   license_name: string;
   repository_url: string;
-  capabilities: { weights?: Weight[]; auto_route?: boolean; manual_only_note?: string };
+  capabilities: { weights?: Weight[]; auto_route?: boolean; manual_only_note?: string; task_type?: string };
 };
 
 type Analysis = {
@@ -88,13 +89,17 @@ type Intent = {
 };
 
 type Candidate = {
+  candidate_id?: string;
   model_id: string;
   checkpoint_id?: string;
+  role?: string;
   output_file_id?: string;
   output_url?: string;
   status: string;
   score: number;
-  metrics: Record<string, number | string | Record<string, number>>;
+  final_score?: number;
+  planning_score?: number;
+  metrics: Record<string, unknown>;
   parameters: Record<string, unknown>;
   runtime_ms: number;
   peak_memory_mb: number;
@@ -102,6 +107,7 @@ type Candidate = {
   adapter_class?: string;
   checkpoint_path?: string;
   checkpoint_sha256?: string;
+  worker_python?: string;
   device?: string;
   precision?: string;
   input_sha256?: string;
@@ -130,6 +136,7 @@ type Task = {
   user_goal: string;
   analysis_mode?: AnalysisMode;
   progress: number;
+  task_mode?: string;
   logs: string[];
   analysis?: Analysis;
   ai_analysis?: AIAnalysis;
@@ -137,7 +144,12 @@ type Task = {
   hardware_info?: Record<string, unknown>;
   model_candidates: Array<Record<string, unknown>>;
   checkpoint_candidates: Array<Record<string, unknown>>;
+  region_constraints?: RegionConstraint[];
   plan?: Plan;
+  candidate_plan?: Record<string, unknown>;
+  candidate_ranking?: Record<string, unknown>;
+  postprocess_recommendation?: PostprocessRecommendation;
+  postprocess_history?: Array<Record<string, unknown>>;
   candidates: Candidate[];
   best_result?: Candidate;
   error?: string;
@@ -145,12 +157,65 @@ type Task = {
   final_recommendation?: string;
 };
 
+type PostprocessRecommendation = {
+  denoise_recommended: boolean;
+  denoise_confidence: number;
+  denoise_reason: string[];
+  denoise_risk: string[];
+  preferred_denoiser: string;
+  super_resolution_recommended: boolean;
+  sr_confidence: number;
+  sr_reason: string[];
+  sr_risk: string[];
+  preferred_sr_model: string;
+  preferred_scale: number;
+};
+
+type PostprocessResult = {
+  task_id: string;
+  operation: string;
+  decision: string;
+  accepted: boolean;
+  executed: boolean;
+  next_status?: string;
+  model_id?: string;
+  message: string;
+  metadata?: { candidate?: Candidate; error?: string };
+};
+
 type SystemInfo = {
   hardware?: Record<string, unknown>;
   settings?: Record<string, unknown>;
 };
 
+type RealESRGANStatus = {
+  pytorch_backend?: { available?: boolean; status_message?: string; packages?: Record<string, { available: boolean; error?: string | null }> };
+  installed_weight_count?: number;
+  missing_expected_weights?: Array<Record<string, unknown>>;
+  available_scales?: number[];
+  mambair_realsr_enabled?: boolean;
+};
+
+type IQAStatus = {
+  available: boolean;
+  status_message: string;
+  metrics: string[];
+  fallback?: string;
+};
+
 type AnalysisMode = "local" | "text_only" | "multimodal";
+
+type RegionConstraint = {
+  target: string;
+  constraint_type: "avoid_overexposure" | "preserve_detail" | "reduce_noise";
+  bbox: [number, number, number, number];
+  confidence?: number;
+  priority: "hard" | "soft";
+  source?: "user" | "multimodal" | "local_highlight_detector" | "api";
+  max_overexposed_ratio?: number;
+  max_luminance_p95?: number;
+  reason?: string;
+};
 
 type AIProviderStatus = {
   provider_id: string;
@@ -279,10 +344,16 @@ function App() {
   const [intent, setIntent] = useState<Intent | null>(null);
   const [task, setTask] = useState<Task | null>(null);
   const [history, setHistory] = useState<Task[]>([]);
-  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("local");
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("multimodal");
+  const [analysisModeTouched, setAnalysisModeTouched] = useState(false);
   const [aiProviders, setAiProviders] = useState<AIProviderStatus[]>([]);
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
+  const [postprocessRecommendation, setPostprocessRecommendation] = useState<PostprocessRecommendation | null>(null);
+  const [postprocessBusy, setPostprocessBusy] = useState(false);
+  const [realesrganStatus, setRealesrganStatus] = useState<RealESRGANStatus | null>(null);
+  const [iqaStatus, setIqaStatus] = useState<IQAStatus | null>(null);
+  const [regionConstraints, setRegionConstraints] = useState<RegionConstraint[]>([]);
   const [tab, setTab] = useState("candidates");
   const [view, setView] = useState("workbench");
   const [busy, setBusy] = useState(false);
@@ -294,6 +365,8 @@ function App() {
     api<Task[]>("/api/v1/history").then(setHistory).catch(() => undefined);
     api<AIProviderStatus[]>("/api/v1/ai/providers").then(setAiProviders).catch(() => undefined);
     api<AISettings>("/api/v1/ai/settings").then(setAiSettings).catch(() => undefined);
+    api<RealESRGANStatus>("/api/v2/models/realesrgan/status").then(setRealesrganStatus).catch(() => undefined);
+    api<IQAStatus>("/api/v2/iqa/status").then(setIqaStatus).catch(() => undefined);
   };
 
   useEffect(refresh, []);
@@ -309,17 +382,30 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!task || ["completed", "failed", "cancelled"].includes(task.status)) return;
+    if (!task || taskIsPausedOrDone(task.status)) return;
     const id = window.setInterval(async () => {
       const next = await api<Task>(`/api/v1/tasks/${task.task_id}`);
       setTask(next);
       setAnalysis(next.analysis || null);
       setIntent(next.user_intent || null);
       setAiAnalysis(next.ai_analysis || null);
-      if (["completed", "failed", "cancelled"].includes(next.status)) refresh();
+      if (taskIsPausedOrDone(next.status)) refresh();
     }, 1000);
     return () => window.clearInterval(id);
   }, [task?.task_id, task?.status]);
+
+  useEffect(() => {
+    if (!analysisModeTouched && aiSettings?.enabled && analysisMode === "local") {
+      setAnalysisMode("multimodal");
+    }
+  }, [analysisModeTouched, aiSettings?.enabled, analysisMode]);
+
+  useEffect(() => {
+    if (task?.best_result?.output_file_id && ["completed", "awaiting_denoise_confirmation", "awaiting_sr_confirmation"].includes(task.status)) {
+      if (task.postprocess_recommendation) setPostprocessRecommendation(task.postprocess_recommendation);
+      loadPostprocessRecommendation(task).catch(() => undefined);
+    }
+  }, [task?.task_id, task?.status, task?.best_result?.output_file_id]);
 
   const selectedModel = models.find((item) => item.model_id === model);
   const weights = selectedModel?.capabilities?.weights || [];
@@ -352,6 +438,8 @@ function App() {
     setAnalysis(null);
     setIntent(null);
     setAiAnalysis(null);
+    setPostprocessRecommendation(null);
+    setRegionConstraints([]);
     setImageId("");
     setTask(null);
     setNotice("");
@@ -409,6 +497,99 @@ function App() {
     }
   };
 
+  const loadPostprocessRecommendation = async (target: Task | null = task) => {
+    if (!target?.task_id || !target.best_result?.output_file_id) return null;
+    const response = await api<{ recommendation: PostprocessRecommendation | null; message?: string }>("/api/v2/tasks/" + target.task_id + "/recommendations");
+    setPostprocessRecommendation(response.recommendation || null);
+    return response.recommendation || null;
+  };
+
+  const runPostprocessDenoise = async (modelId: "lpdm" | "nafnet", checkpointId: string) => {
+    if (!task?.task_id || !task.best_result?.output_file_id) return;
+    setPostprocessBusy(true);
+    setNotice("");
+    try {
+      const result = await api<PostprocessResult>("/api/v2/tasks/" + task.task_id + "/postprocess/decision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation: "denoise",
+          decision: modelId === "lpdm" ? "accept" : "choose_model",
+          model_id: modelId,
+          parameters: { checkpoint_id: checkpointId, precision: "fp32", device: "cuda" },
+        }),
+      });
+      const next = await api<Task>("/api/v2/tasks/" + task.task_id);
+      setTask(next);
+      setNotice(result.message);
+      setTab("candidates");
+      await loadPostprocessRecommendation(next);
+      refresh();
+    } catch (err) {
+      setNotice(String(err));
+    } finally {
+      setPostprocessBusy(false);
+    }
+  };
+
+  const runSuperResolution = async (scale = 2, allowX4 = false) => {
+    if (!task?.task_id || !task.best_result?.output_file_id) return;
+    setPostprocessBusy(true);
+    setNotice("");
+    try {
+      const result = await api<PostprocessResult>("/api/v2/tasks/" + task.task_id + "/super-resolution/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scale, allow_x4: allowX4, parameters: { precision: "fp16", device: "cuda" } }),
+      });
+      const next = await api<Task>("/api/v2/tasks/" + task.task_id);
+      setTask(next);
+      setNotice(result.message);
+      setTab("candidates");
+      await loadPostprocessRecommendation(next);
+      refresh();
+    } catch (err) {
+      setNotice(String(err));
+    } finally {
+      setPostprocessBusy(false);
+    }
+  };
+
+  const skipSuperResolution = async () => {
+    if (!task?.task_id) return;
+    setPostprocessBusy(true);
+    setNotice("");
+    try {
+      const result = await api<PostprocessResult>("/api/v2/tasks/" + task.task_id + "/super-resolution/skip", { method: "POST" });
+      const next = await api<Task>("/api/v2/tasks/" + task.task_id);
+      setTask(next);
+      setNotice(result.message);
+      refresh();
+    } catch (err) {
+      setNotice(String(err));
+    } finally {
+      setPostprocessBusy(false);
+    }
+  };
+
+  const rollbackPostprocess = async () => {
+    if (!task?.task_id || task.best_result?.parameters?.role !== "postprocess") return;
+    setPostprocessBusy(true);
+    setNotice("");
+    try {
+      const result = await api<PostprocessResult>("/api/v2/tasks/" + task.task_id + "/postprocess/rollback", { method: "POST" });
+      const next = await api<Task>("/api/v2/tasks/" + task.task_id);
+      setTask(next);
+      setNotice(result.message);
+      setTab("candidates");
+      await loadPostprocessRecommendation(next);
+      refresh();
+    } catch (err) {
+      setNotice(String(err));
+    } finally {
+      setPostprocessBusy(false);
+    }
+  };
   const start = async () => {
     if (!file) return;
     setBusy(true);
@@ -422,7 +603,7 @@ function App() {
         id = uploaded.file_id;
         setImageId(id);
       }
-      const created = await api<Task>("/api/v1/tasks", {
+      const created = await api<Task>("/api/v2/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -433,6 +614,9 @@ function App() {
           analysis_mode: analysisMode,
           model_id: mode === "manual" ? model : undefined,
           checkpoint_id: mode === "manual" ? checkpoint : undefined,
+          parameters: {
+            region_constraints: regionConstraints,
+          },
         }),
       });
       setTask(created);
@@ -461,7 +645,10 @@ function App() {
                 mode={mode}
                 setMode={setMode}
                 analysisMode={analysisMode}
-                setAnalysisMode={setAnalysisMode}
+                setAnalysisMode={(value) => {
+                  setAnalysisModeTouched(true);
+                  setAnalysisMode(value);
+                }}
                 aiSettings={aiSettings}
                 priority={priority}
                 setPriority={setPriority}
@@ -471,15 +658,17 @@ function App() {
                 checkpoint={checkpoint}
                 setCheckpoint={setCheckpoint}
                 weights={weights}
+                regionConstraints={regionConstraints}
+                setRegionConstraints={setRegionConstraints}
                 busy={busy}
                 onFile={onFile}
                 onAnalyze={uploadAnalyze}
                 onStart={start}
               />
-              <ComparePanel preview={previewUrl} resultUrl={resultUrl} task={task} analysis={activeAnalysis} />
+              <ComparePanel preview={previewUrl} resultUrl={resultUrl} task={task} analysis={activeAnalysis} regionConstraints={(task?.region_constraints as RegionConstraint[] | undefined) || regionConstraints} />
               <BottomPanel tab={tab} setTab={setTab} task={task} preview={previewUrl} />
             </div>
-            <DecisionCenter task={task} analysis={activeAnalysis} intent={activeIntent} goal={goal} models={models} aiAnalysis={task?.ai_analysis || aiAnalysis} analysisMode={task?.analysis_mode || analysisMode} aiProviders={aiProviders} aiSettings={aiSettings} />
+            <DecisionCenter task={task} analysis={activeAnalysis} intent={activeIntent} goal={goal} models={models} aiAnalysis={task?.ai_analysis || aiAnalysis} analysisMode={task?.analysis_mode || analysisMode} aiProviders={aiProviders} aiSettings={aiSettings} postprocessRecommendation={postprocessRecommendation} postprocessBusy={postprocessBusy} realesrganStatus={realesrganStatus} iqaStatus={iqaStatus} onRefreshPostprocess={() => loadPostprocessRecommendation(task)} onRunPostprocess={runPostprocessDenoise} onRunSuperResolution={runSuperResolution} onSkipSuperResolution={skipSuperResolution} onRollbackPostprocess={rollbackPostprocess} />
           </>
         )}
         {view === "models" && <ModelsPage models={models} refresh={refresh} />}
@@ -556,6 +745,8 @@ function InputPanel(props: {
   checkpoint: string;
   setCheckpoint: (value: string) => void;
   weights: Weight[];
+  regionConstraints: RegionConstraint[];
+  setRegionConstraints: (value: RegionConstraint[]) => void;
   busy: boolean;
   onFile: (file: File | null) => void;
   onAnalyze: () => void;
@@ -609,6 +800,11 @@ function InputPanel(props: {
               </select>
             </div>
           )}
+          <RegionConstraintEditor
+            preview={props.preview}
+            constraints={props.regionConstraints}
+            setConstraints={props.setRegionConstraints}
+          />
           <div className="action-row">
             <button onClick={props.onAnalyze} disabled={!props.file || props.busy}><Gauge />分析图像</button>
             <button className="primary-action" onClick={props.onStart} disabled={!props.file || props.busy}><Sparkles />开始智能增强</button>
@@ -623,7 +819,127 @@ function ControlGroup({ label, children }: { label: string; children: React.Reac
   return <div className="control-group"><span>{label}</span><div>{children}</div></div>;
 }
 
-function ComparePanel({ preview, resultUrl, task, analysis }: { preview: string; resultUrl?: string; task: Task | null; analysis: Analysis | null | undefined }) {
+function RegionConstraintEditor({ preview, constraints, setConstraints }: { preview: string; constraints: RegionConstraint[]; setConstraints: (value: RegionConstraint[]) => void }) {
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  const [imageSize, setImageSize] = useState<[number, number] | null>(null);
+  const [dragStart, setDragStart] = useState<[number, number] | null>(null);
+  const [draft, setDraft] = useState<[number, number, number, number] | null>(null);
+  const [target, setTarget] = useState("streetlight");
+  const [threshold, setThreshold] = useState(0.08);
+
+  const pointFromEvent = (event: React.MouseEvent<HTMLDivElement>): [number, number] | null => {
+    const img = imageRef.current;
+    if (!img || !imageSize) return null;
+    const rect = img.getBoundingClientRect();
+    const x = Math.round(((event.clientX - rect.left) / rect.width) * imageSize[0]);
+    const y = Math.round(((event.clientY - rect.top) / rect.height) * imageSize[1]);
+    return [Math.max(0, Math.min(imageSize[0], x)), Math.max(0, Math.min(imageSize[1], y))];
+  };
+
+  const begin = (event: React.MouseEvent<HTMLDivElement>) => {
+    const point = pointFromEvent(event);
+    if (!point) return;
+    setDragStart(point);
+    setDraft([point[0], point[1], point[0], point[1]]);
+  };
+
+  const move = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!dragStart) return;
+    const point = pointFromEvent(event);
+    if (!point) return;
+    setDraft([dragStart[0], dragStart[1], point[0], point[1]]);
+  };
+
+  const end = () => {
+    if (!draft) {
+      setDragStart(null);
+      return;
+    }
+    const [a, b, c, d] = draft;
+    const bbox: [number, number, number, number] = [Math.min(a, c), Math.min(b, d), Math.max(a, c), Math.max(b, d)];
+    setDragStart(null);
+    setDraft(null);
+    if ((bbox[2] - bbox[0]) < 6 || (bbox[3] - bbox[1]) < 6) return;
+    setConstraints([...constraints, {
+      target: target.trim() || "streetlight",
+      constraint_type: "avoid_overexposure",
+      bbox,
+      priority: "hard",
+      source: "user",
+      confidence: 1,
+      max_overexposed_ratio: threshold,
+      max_luminance_p95: 248,
+      reason: "manual ROI highlight protection",
+    }]);
+  };
+
+  const remove = (index: number) => setConstraints(constraints.filter((_, itemIndex) => itemIndex !== index));
+
+  return (
+    <div className="region-editor">
+      <div className="region-toolbar">
+        <span>ROI约束</span>
+        <input value={target} onChange={(event) => setTarget(event.target.value)} />
+        <label>
+          过曝阈值
+          <input type="number" min="0.01" max="0.5" step="0.01" value={threshold} onChange={(event) => setThreshold(Number(event.target.value) || 0.08)} />
+        </label>
+      </div>
+      {preview ? (
+        <div className="region-stage" onMouseDown={begin} onMouseMove={move} onMouseUp={end} onMouseLeave={end}>
+          <img
+            ref={imageRef}
+            src={preview}
+            onLoad={(event) => {
+              const img = event.currentTarget;
+              setImageSize([img.naturalWidth, img.naturalHeight]);
+            }}
+            draggable={false}
+          />
+          <RegionOverlay constraints={constraints} imageSize={imageSize} draft={draft} />
+        </div>
+      ) : (
+        <p className="note-line">上传图像后可拖拽框选需要保护的路灯、招牌或其他高光区域。</p>
+      )}
+      {constraints.length ? (
+        <div className="region-list">
+          {constraints.map((item, index) => (
+            <button key={`${item.target}-${index}`} onClick={() => remove(index)}>
+              <ShieldCheck />
+              <span>{item.target} [{item.bbox.join(", ")}]</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RegionOverlay({ constraints, imageSize, draft }: { constraints: RegionConstraint[]; imageSize?: [number, number] | null; draft?: [number, number, number, number] | null }) {
+  const boxes = draft ? [...constraints, { target: "draft", bbox: draft, constraint_type: "avoid_overexposure", priority: "hard" } as RegionConstraint] : constraints;
+  if (!imageSize || !boxes.length) return null;
+  const [width, height] = imageSize;
+  return (
+    <div className="region-overlay">
+      {boxes.map((item, index) => {
+        const [a, b, c, d] = item.bbox;
+        const x1 = Math.min(a, c);
+        const y1 = Math.min(b, d);
+        const x2 = Math.max(a, c);
+        const y2 = Math.max(b, d);
+        const style = {
+          left: `${(x1 / width) * 100}%`,
+          top: `${(y1 / height) * 100}%`,
+          width: `${((x2 - x1) / width) * 100}%`,
+          height: `${((y2 - y1) / height) * 100}%`,
+        };
+        return <span className={`region-box ${item.target === "draft" ? "draft" : ""}`} style={style} key={`${item.target}-${index}`}><b>{item.target}</b></span>;
+      })}
+    </div>
+  );
+}
+
+function ComparePanel({ preview, resultUrl, task, analysis, regionConstraints }: { preview: string; resultUrl?: string; task: Task | null; analysis: Analysis | null | undefined; regionConstraints: RegionConstraint[] }) {
   const best = task?.best_result;
   return (
     <section className="panel compare-panel">
@@ -632,9 +948,9 @@ function ComparePanel({ preview, resultUrl, task, analysis }: { preview: string;
         <span className={best?.is_mock ? "tag warn" : "tag ok"}>{best ? (best.is_mock ? "Mock测试结果" : "真实模型结果") : "等待结果"}</span>
       </div>
       <div className="compare-stage">
-        <ImageSlot label="原始图像" src={preview} />
+        <ImageSlot label="原始图像" src={preview} regions={regionConstraints} />
         <div className="split-handle"><ChevronRight /></div>
-        <ImageSlot label={task?.error || "增强结果"} src={resultUrl} />
+        <ImageSlot label={task?.error || "增强结果"} src={resultUrl} regions={regionConstraints} />
       </div>
       <div className="result-ribbon">
         <span>推荐结果：{best ? `${modelName(best.model_id)} / ${checkpointName(best.checkpoint_id)}` : "-"}</span>
@@ -651,11 +967,22 @@ function ComparePanel({ preview, resultUrl, task, analysis }: { preview: string;
   );
 }
 
-function ImageSlot({ label, src }: { label: string; src?: string }) {
-  return <div className="image-slot"><span>{label}</span>{src ? <img src={src} /> : <div className="empty-image"><FileImage />{label}</div>}</div>;
+function ImageSlot({ label, src, regions = [] }: { label: string; src?: string; regions?: RegionConstraint[] }) {
+  const [imageSize, setImageSize] = useState<[number, number] | null>(null);
+  return (
+    <div className="image-slot">
+      <span>{label}</span>
+      {src ? (
+        <div className="slot-image-wrap">
+          <img src={src} onLoad={(event) => setImageSize([event.currentTarget.naturalWidth, event.currentTarget.naturalHeight])} />
+          <RegionOverlay constraints={regions} imageSize={imageSize} />
+        </div>
+      ) : <div className="empty-image"><FileImage />{label}</div>}
+    </div>
+  );
 }
 
-function DecisionCenter({ task, analysis, intent, goal, models, aiAnalysis, analysisMode, aiProviders, aiSettings }: { task: Task | null; analysis: Analysis | null | undefined; intent: Intent | null | undefined; goal: string; models: ModelStatus[]; aiAnalysis: AIAnalysis | null; analysisMode: AnalysisMode; aiProviders: AIProviderStatus[]; aiSettings: AISettings | null }) {
+function DecisionCenter({ task, analysis, intent, goal, models, aiAnalysis, analysisMode, aiProviders, aiSettings, postprocessRecommendation, postprocessBusy, realesrganStatus, iqaStatus, onRefreshPostprocess, onRunPostprocess, onRunSuperResolution, onSkipSuperResolution, onRollbackPostprocess }: { task: Task | null; analysis: Analysis | null | undefined; intent: Intent | null | undefined; goal: string; models: ModelStatus[]; aiAnalysis: AIAnalysis | null; analysisMode: AnalysisMode; aiProviders: AIProviderStatus[]; aiSettings: AISettings | null; postprocessRecommendation: PostprocessRecommendation | null; postprocessBusy: boolean; realesrganStatus: RealESRGANStatus | null; iqaStatus: IQAStatus | null; onRefreshPostprocess: () => void; onRunPostprocess: (modelId: "lpdm" | "nafnet", checkpointId: string) => void; onRunSuperResolution: (scale?: number, allowX4?: boolean) => void; onSkipSuperResolution: () => void; onRollbackPostprocess: () => void }) {
   return (
     <aside className="agent-panel">
       <div className="panel-title">
@@ -665,6 +992,8 @@ function DecisionCenter({ task, analysis, intent, goal, models, aiAnalysis, anal
       <AnalysisCard analysis={analysis} />
       <IntentCard intent={intent} goal={goal} />
       <SafeSemanticCard aiAnalysis={aiAnalysis} analysisMode={analysisMode} aiProviders={aiProviders} aiSettings={aiSettings} />
+      <RegionMonitorCard task={task} />
+      <PostprocessCard task={task} recommendation={postprocessRecommendation} busy={postprocessBusy} realesrganStatus={realesrganStatus} iqaStatus={iqaStatus} onRefresh={onRefreshPostprocess} onRun={onRunPostprocess} onRunSr={onRunSuperResolution} onSkipSr={onSkipSuperResolution} onRollback={onRollbackPostprocess} />
       <RouteCard title="模型架构路由" items={task?.model_candidates || []} selected={task?.plan?.selected_model} kind="model" />
       <WeightRouteCard items={task?.checkpoint_candidates || []} selected={task?.plan?.selected_checkpoint} />
       <TimelineCard task={task} />
@@ -716,6 +1045,43 @@ function IntentCard({ intent, goal }: { intent: Intent | null | undefined; goal:
       <p className="intent-text">{intent?.raw_text || goal || "等待用户需求"}</p>
       <div className="tag-row">{tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div>
       {!!intent?.evidence?.length && <p className="evidence">{intent.evidence.join(" / ")}</p>}
+    </Card>
+  );
+}
+
+function RegionMonitorCard({ task }: { task: Task | null }) {
+  const constraints = task?.region_constraints || [];
+  const bestRegion = (task?.best_result?.metrics?.region_constraints || null) as Record<string, unknown> | null;
+  if (!constraints.length && !bestRegion) {
+    return (
+      <Card title="区域监视" icon={<ShieldCheck />}>
+        <EmptyText text="可在输入图上框选路灯、招牌等区域，Agent 会在真实输出后单独检查。." />
+      </Card>
+    );
+  }
+  const items = (bestRegion?.items || []) as Array<Record<string, unknown>>;
+  return (
+    <Card title="区域监视" icon={<ShieldCheck />}>
+      {constraints.length ? (
+        <div className="region-monitor-list">
+          {constraints.map((item, index) => (
+            <div className="region-monitor-item" key={`${item.target}-${index}`}>
+              <strong>{item.target}</strong>
+              <span>{item.constraint_type} / {item.priority}</span>
+              <small>{item.bbox.join(", ")}</small>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {bestRegion ? (
+        <div className="region-eval-summary">
+          <InfoRow label="最佳结果ROI" value={bestRegion.hard_failed ? "未通过" : "通过"} tone={bestRegion.hard_failed ? "warn" : "ok"} />
+          <InfoRow label="区域得分" value={fmt(Number(bestRegion.score || 0) * 100, 1)} />
+          {items.slice(0, 3).map((item, index) => (
+            <p className="note-line" key={index}>{String(item.target || "ROI")}：过曝 {pct(Number(item.overexposed_ratio_after || 0))}，P95 {fmt(Number(item.luminance_p95_after || 0), 1)}</p>
+          ))}
+        </div>
+      ) : <p className="note-line">任务运行后显示每个 ROI 的过曝和亮度检查。</p>}
     </Card>
   );
 }
@@ -796,6 +1162,7 @@ function SafeSemanticCard({ aiAnalysis, analysisMode, aiProviders, aiSettings }:
       reason: item.reason,
     })),
   ];
+  const conciseAdvice = compactAiAdvice(aiAnalysis);
   const validationRows: Array<[string, React.ReactNode, React.ReactNode?]> = [
     ["本地校验", aiAnalysis.validation_passed ? "通过" : "未通过", aiAnalysis.validation_passed ? "可作为建议" : "已回退"],
     ["最终采纳", aiAnalysis.adopted ? "采纳为有限加分依据" : "未采纳", aiAnalysis.adopted ? `最多 +${String(aiAnalysis.local_validation?.semantic_bonus_max ?? 20)} 分` : "本地规则优先"],
@@ -810,6 +1177,10 @@ function SafeSemanticCard({ aiAnalysis, analysisMode, aiProviders, aiSettings }:
         <Metric label="判断置信度" value={fmt(aiAnalysis.scene_confidence, 2)} />
       </div>
       <div className="tag-row">{tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div>
+      <div className="ai-brief">
+        <span>AI 精简建议</span>
+        <b>{conciseAdvice}</b>
+      </div>
       <div className="semantic-suggestions">
         {suggestions.length ? suggestions.map((item) => (
           <div className="suggestion-row" key={item.id}>
@@ -822,10 +1193,120 @@ function SafeSemanticCard({ aiAnalysis, analysisMode, aiProviders, aiSettings }:
       </div>
       <div className="validation-grid">{validationRows.map(([label, value, tone]) => <InfoRow key={label} label={label} value={value} tone={tone} />)}</div>
       {!!aiAnalysis.validation_errors?.length && <p className="note-line">校验记录：{aiAnalysis.validation_errors.join(" / ")}</p>}
-      <p className="evidence">{aiAnalysis.reasoning_summary || "本地统计分析无法可靠识别复杂场景语义。"}</p>
+      <details className="ai-raw-summary">
+        <summary>查看大模型原始摘要</summary>
+        <p className="evidence">{aiAnalysis.reasoning_summary || "本地统计分析无法可靠识别复杂场景语义。"}</p>
+      </details>
       {!!aiAnalysis.warnings?.length && <p className="note-line">{aiAnalysis.warnings.join(" / ")}</p>}
       <p className="note-line">多模态结果只作为受限建议展示，最终执行仍以本地模型注册、权重状态、硬件检查和路由规则为准。</p>
       {aiAnalysis.fallback_used && <span className="tag warn">已回退本地规则</span>}
+    </Card>
+  );
+}
+
+function compactAiAdvice(aiAnalysis: AIAnalysis) {
+  const topModel = aiAnalysis.model_candidates?.[0];
+  const topCheckpoint = aiAnalysis.checkpoint_candidates?.[0];
+  const target = [
+    topModel ? modelName(topModel.model_id) : "",
+    topCheckpoint ? checkpointName(topCheckpoint.checkpoint_id) : "",
+  ].filter(Boolean).join(" / ");
+  const raw = (aiAnalysis.reasoning_summary || topModel?.reason || topCheckpoint?.reason || "建议结合本地评分选择候选结果。").replace(/\s+/g, " ").trim();
+  const summary = raw.length > 120 ? `${raw.slice(0, 118)}...` : raw;
+  return target ? `优先参考 ${target}；${summary}` : summary;
+}
+
+function PostprocessCard({ task, recommendation, busy, realesrganStatus, iqaStatus, onRefresh, onRun, onRunSr, onSkipSr, onRollback }: { task: Task | null; recommendation: PostprocessRecommendation | null; busy: boolean; realesrganStatus: RealESRGANStatus | null; iqaStatus: IQAStatus | null; onRefresh: () => void; onRun: (modelId: "lpdm" | "nafnet", checkpointId: string) => void; onRunSr: (scale?: number, allowX4?: boolean) => void; onSkipSr: () => void; onRollback: () => void }) {
+  const ready = Boolean(task?.best_result?.output_file_id) && ["completed", "awaiting_denoise_confirmation", "awaiting_sr_confirmation"].includes(task?.status || "");
+  const bestOperation = String(task?.best_result?.parameters?.operation || "");
+  const alreadyPostprocessed = task?.best_result?.parameters?.role === "postprocess";
+  const srReady = Boolean(realesrganStatus?.pytorch_backend?.available);
+  const lpdmReady = false;
+  const srPackages = realesrganStatus?.pytorch_backend?.packages || {};
+  const srMissing = Object.entries(srPackages).filter(([, value]) => !value.available).map(([key]) => key).join(" / ");
+  return (
+    <Card title="后处理验证" icon={<Sparkles />}>
+      <div className="postprocess-summary">
+        <InfoRow label="去噪建议" value={recommendation?.preferred_denoiser ? modelName(recommendation.preferred_denoiser) : "NAFNet"} />
+        <InfoRow label="去噪置信度" value={recommendation ? pct(recommendation.denoise_confidence) : "待计算"} />
+        <InfoRow label="超分建议" value={recommendation?.preferred_sr_model && recommendation.preferred_sr_model !== "none" ? `${modelName(recommendation.preferred_sr_model)} x${recommendation.preferred_scale || 2}` : "暂不建议"} />
+        <InfoRow label="Real-ESRGAN" value={srReady ? "可用" : "不可用"} tone={srReady ? "ok" : "warn"} />
+        <InfoRow label="IQA" value={iqaStatus?.available ? "pyiqa 可用" : "本地指标回退"} tone={iqaStatus?.available ? "ok" : "warn"} />
+        <InfoRow label="最终状态" value={alreadyPostprocessed ? (bestOperation === "super_resolution" ? "已采用超分结果" : "已采用去噪结果") : ready ? "等待用户确认" : "等待增强完成"} />
+      </div>
+      {recommendation?.denoise_reason?.length ? <div className="reason-list">{recommendation.denoise_reason.map((item) => <span key={item}>{item}</span>)}</div> : <p className="note-line">增强完成后会根据残余噪声、色偏和清晰度风险给出建议。</p>}
+      {recommendation?.sr_reason?.length ? <div className="reason-list">{recommendation.sr_reason.map((item) => <span key={item}>{item}</span>)}</div> : null}
+      {srMissing ? <p className="note-line">Real-ESRGAN 依赖缺失：{srMissing}，超分会保持禁用。</p> : null}
+      {iqaStatus && !iqaStatus.available ? <p className="note-line">IQA 当前不可用：{iqaStatus.status_message}，将使用本地技术指标评分。</p> : null}
+      <div className="action-row compact">
+        <button onClick={() => onRun("lpdm", "lpdm_lol")} disabled={!lpdmReady || !ready || busy || alreadyPostprocessed} title="LPDM 在当前环境下全尺寸后处理不稳定，已暂停执行。">{busy ? "处理中" : "LPDM 暂停"}</button>
+        <button onClick={() => onRun("nafnet", "sidd_width32")} disabled={!ready || busy || alreadyPostprocessed}>{busy ? "处理中" : "NAFNet 手动去噪"}</button>
+        <button onClick={() => onRunSr(2, false)} disabled={!ready || busy || alreadyPostprocessed || !srReady}>{busy ? "处理中" : "Real-ESRGAN x2"}</button>
+        <button onClick={() => onRunSr(4, true)} disabled={!ready || busy || alreadyPostprocessed || !srReady}>{busy ? "处理中" : "Real-ESRGAN x4"}</button>
+        <button onClick={onSkipSr} disabled={!ready || busy}>跳过超分</button>
+        <button onClick={onRefresh} disabled={!ready || busy}><RefreshCw />刷新建议</button>
+        <button onClick={onRollback} disabled={!alreadyPostprocessed || busy}><RotateCcw />撤回后处理</button>
+      </div>
+      <p className="note-line">后处理结果会重新评分；如果分数下降或出现伪影，会自动回退到增强后的最佳结果。</p>
+    </Card>
+  );
+}
+
+function CandidatePlanCard({ task }: { task: Task | null }) {
+  const items = task?.model_candidates || [];
+  return (
+    <Card title="候选规划" icon={<Layers />}>
+      {items.length ? (
+        <div className="v2-plan-list">
+          {items.map((item, index) => {
+            const modelId = String(item.model_id || "-");
+            const checkpointId = String(item.checkpoint_id || "-");
+            const reasons = Array.isArray(item.reason) ? item.reason : [String(item.reason || "")].filter(Boolean);
+            return (
+              <div className="v2-plan-item" key={`${modelId}-${checkpointId}-${index}`}>
+                <div>
+                  <span className="rank">{index + 1}</span>
+                  <strong>{modelName(modelId)} / {checkpointName(checkpointId)}</strong>
+                </div>
+                <b>{scoreText(item.planning_score)} 规划分</b>
+                <small>
+                  {String(item.role || "enhancement")} · 权重匹配 {scoreText(item.checkpoint_score)}
+                </small>
+                <p>{reasons.join(" / ") || "由图像退化、用户需求、硬件资源和模型健康状态共同决定。"}</p>
+              </div>
+            );
+          })}
+        </div>
+      ) : <EmptyText text="任务启动后显示 1-3 个互补增强候选。" />}
+      <p className="note-line">规划分只决定哪些候选值得执行；最终推荐必须等待真实模型输出后的最终评分。</p>
+    </Card>
+  );
+}
+
+function CandidateResultsCard({ task }: { task: Task | null }) {
+  const main = (task?.candidates || []).filter((item) => item.parameters?.role !== "postprocess");
+  const bestId = task?.best_result?.output_file_id;
+  return (
+    <Card title="候选结果评分" icon={<BarChart3 />}>
+      {main.length ? (
+        <div className="v2-result-list">
+          {main.map((item, index) => {
+            const layers = (item.metrics?.score_layers || {}) as Record<string, unknown>;
+            const region = (item.metrics?.region_constraints || null) as Record<string, unknown> | null;
+            const finalScore = item.final_score ?? item.score;
+            return (
+              <div className={`v2-result-item ${bestId && item.output_file_id === bestId ? "selected" : ""}`} key={`${item.candidate_id || index}-${item.output_file_id || item.status}`}>
+                <span className="rank">{index + 1}</span>
+                <strong>{modelName(item.model_id)} / {checkpointName(item.checkpoint_id)}</strong>
+                <b>{item.status === "completed" ? `${fmt(finalScore, 1)} 最终分` : "失败"}</b>
+                <small>规划 {fmt(item.planning_score || Number(item.metrics?.planning_score || 0), 1)} · 画质 {fmt(Number(layers.image_quality || 0) * 100, 1)} · 恢复 {fmt(Number(layers.restoration || 0) * 100, 1)} · 约束 {fmt(Number(layers.constraint || 0) * 100, 1)} · 稳定 {fmt(Number(layers.stability || 0) * 100, 1)}</small>
+                {region?.enabled ? <em className={region.hard_failed ? "roi-fail" : "roi-pass"}>ROI {region.hard_failed ? "未通过" : "通过"} · {fmt(Number(region.score || 0) * 100, 1)}</em> : null}
+                {item.error && <p>{item.error}</p>}
+              </div>
+            );
+          })}
+        </div>
+      ) : <EmptyText text="候选执行后显示真实输出评分。" />}
     </Card>
   );
 }
@@ -925,26 +1406,36 @@ function BottomPanel({ tab, setTab, task, preview }: { tab: string; setTab: (val
 
 function CandidatesTab({ candidates }: { candidates: Candidate[] }) {
   if (!candidates.length) return <EmptyText text="任务运行后展示真实候选输出。" />;
+  const postprocess = candidates.filter((item) => item.parameters?.role === "postprocess");
+  const main = candidates.filter((item) => item.parameters?.role !== "postprocess");
+  const renderCard = (item: Candidate) => (
+    <article className={`candidate-card ${item.is_mock ? "mock" : ""}`} key={`${item.model_id}-${item.checkpoint_id}-${item.output_file_id}`}>
+      {item.output_url ? <img src={item.output_url} /> : <div className="thumb-empty">{item.error || "未输出"}</div>}
+      <div>
+        <div className="candidate-head">
+          <strong>{modelName(item.model_id)} / {checkpointName(item.checkpoint_id)}</strong>
+          <span className={item.parameters?.role === "postprocess" ? "tag ok" : item.is_mock ? "tag warn" : "tag ok"}>{item.parameters?.role === "postprocess" ? "后处理" : item.is_mock ? "Mock结果" : "真实模型"}</span>
+        </div>
+        <div className="mini-metrics">
+          <span>真实输出评分 <b>{fmt(item.score, 1)}</b></span>
+          <span>推理时间 <b>{seconds(item.runtime_ms)}</b></span>
+          <span>峰值显存 <b>{fmt(item.peak_memory_mb, 1)}MB</b></span>
+          <span>设备 <b>{item.device || "-"}</b></span>
+        </div>
+        {item.output_url && <a className="button ghost" href={item.output_url} target="_blank">查看结果</a>}
+      </div>
+    </article>
+  );
   return (
-    <div className="candidate-grid">
-      {candidates.map((item) => (
-        <article className={`candidate-card ${item.is_mock ? "mock" : ""}`} key={`${item.model_id}-${item.checkpoint_id}-${item.output_file_id}`}>
-          {item.output_url ? <img src={item.output_url} /> : <div className="thumb-empty">{item.error || "未输出"}</div>}
-          <div>
-            <div className="candidate-head">
-              <strong>{modelName(item.model_id)} / {checkpointName(item.checkpoint_id)}</strong>
-              <span className={item.is_mock ? "tag warn" : "tag ok"}>{item.is_mock ? "Mock结果" : "真实模型"}</span>
-            </div>
-            <div className="mini-metrics">
-              <span>综合评分 <b>{fmt(item.score, 1)}</b></span>
-              <span>推理时间 <b>{seconds(item.runtime_ms)}</b></span>
-              <span>峰值显存 <b>{fmt(item.peak_memory_mb, 1)}MB</b></span>
-              <span>设备 <b>{item.device || "-"}</b></span>
-            </div>
-            {item.output_url && <a className="button ghost" href={item.output_url} target="_blank">查看结果</a>}
-          </div>
-        </article>
-      ))}
+    <div className="candidate-sections">
+      <div className="candidate-section">
+        <div className="section-title-row"><h3>主增强候选</h3><span>参与自动评分和初始推荐。</span></div>
+        <div className="candidate-grid">{main.map(renderCard)}</div>
+      </div>
+      <div className="candidate-section">
+        <div className="section-title-row"><h3>后处理结果</h3><span>确认后由 NAFNet 基于推荐结果继续去噪。</span></div>
+        {postprocess.length ? <div className="candidate-grid">{postprocess.map(renderCard)}</div> : <EmptyText text="暂无后处理结果。" />}
+      </div>
     </div>
   );
 }
@@ -1021,38 +1512,63 @@ function ParamsTab({ task, preview }: { task: Task | null; preview: string }) {
 }
 
 function ModelsPage({ models, refresh }: { models: ModelStatus[]; refresh: () => void }) {
+  const enhancementModels = models.filter((item) => !String(item.capabilities.task_type || "").includes("denoising") && !String(item.capabilities.task_type || "").includes("super_resolution"));
+  const postprocessModels = models.filter((item) => String(item.capabilities.task_type || "").includes("denoising"));
+  const superResolutionModels = models.filter((item) => String(item.capabilities.task_type || "").includes("super_resolution"));
+  const groups = [
+    { id: "enhancement", title: "增强模型", hint: "参与主流程候选增强、评分和最终结果选择。", items: enhancementModels },
+    { id: "postprocess", title: "后处理去噪", hint: "用于增强后的真实图像去噪确认；NAFNet 不作为超分模型。", items: postprocessModels },
+  ];
+
   return (
     <section className="page-panel" id="model-center">
       <div className="panel-title">
-        <h2>模型与权重</h2>
+        <div>
+          <h2>模型与权重</h2>
+          <span className="mini-note">NAFNet 已接入后处理去噪，包含 SIDD width32 / width64 两套权重。</span>
+        </div>
         <button onClick={refresh}><RefreshCw />重新扫描</button>
       </div>
-      <div className="model-grid">
-        {models.map((model) => (
-          <article className="model-card" key={model.model_id}>
-            <div className="candidate-head">
-              <strong>{model.display_name}</strong>
-              <span className={model.available ? "tag ok" : "tag warn"}>{model.available ? "可用" : "不可用"}</span>
+      <div className="model-group-stack">
+        {groups.map((group) => (
+          <section className="model-section" key={group.id}>
+            <div className="section-title-row">
+              <h3>{group.title}</h3>
+              <span>{group.hint}</span>
             </div>
-            <p>{model.description}</p>
-            <small>{model.status_message}</small>
-            <div className="weight-list">
-              {(model.capabilities.weights || []).map((weight) => (
-                <div className="weight-row" key={weight.checkpoint_id}>
-                  <b>{weight.display_name}</b>
-                  <span>{weight.status === "found" ? "已安装" : weight.status}</span>
-                  <span>{weight.domain || "-"}</span>
-                  <span>{fmtBytes(weight.size_bytes)}</span>
-                </div>
+            <div className="model-grid">
+              {group.items.map((model) => (
+                <article className={`model-card ${model.model_id === "nafnet" ? "featured-model" : ""}`} key={model.model_id}>
+                  <div className="candidate-head">
+                    <strong>{model.display_name}</strong>
+                    <span className={model.available ? "tag ok" : "tag warn"}>{model.available ? "可用" : "不可用"}</span>
+                  </div>
+                  <p>{model.description}</p>
+                  <small>{model.status_message}</small>
+                  <div className="model-meta-row">
+                    <span>{model.capabilities.task_type || "model"}</span>
+                    <span>{model.capabilities.auto_route ? "自动路由" : "手动/确认"}</span>
+                  </div>
+                  <div className="weight-list">
+                    {(model.capabilities.weights || []).map((weight) => (
+                      <div className="weight-row" key={weight.checkpoint_id}>
+                        <b>{weight.display_name}</b>
+                        <span>{weight.status === "found" ? "已安装" : weight.status}</span>
+                        <span>{weight.domain || "-"}</span>
+                        <span>{fmtBytes(weight.size_bytes)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </article>
               ))}
+              {!group.items.length && <EmptyText text="暂无模型。" />}
             </div>
-          </article>
+          </section>
         ))}
       </div>
     </section>
   );
 }
-
 function HistoryPage({ history }: { history: Task[] }) {
   return (
     <section className="page-panel">
@@ -1264,6 +1780,11 @@ function level(value: number, cuts: [number, number], labels: [string, string, s
   return labels[2];
 }
 
+
+function taskIsPausedOrDone(status: string) {
+  return ["completed", "failed", "cancelled", "awaiting_denoise_confirmation", "awaiting_sr_confirmation"].includes(status);
+}
+
 function scoreText(value: unknown) {
   const num = Number(value);
   return Number.isFinite(num) ? `${num.toFixed(0)}分` : "-";
@@ -1287,7 +1808,7 @@ function fmtBytes(n?: number) {
 }
 
 function modelName(id?: string) {
-  const names: Record<string, string> = { retinexformer: "Retinexformer", sci: "SCI", zero_dce: "Zero-DCE", mock_model: "MockModel" };
+  const names: Record<string, string> = { retinexformer: "Retinexformer", darkir: "DarkIR", hvi_cidnet: "HVI-CIDNet", flol: "FLOL", lpdm: "LPDM", nafnet: "NAFNet", realesrgan: "Real-ESRGAN", sci: "SCI", zero_dce: "Zero-DCE", mock_model: "MockModel" };
   return id ? names[id] || id : "-";
 }
 
@@ -1299,7 +1820,17 @@ function checkpointName(id?: string) {
     medium: "medium",
     difficult: "difficult",
     epoch99: "Epoch99",
+    real_lsrw: "real-LSRW",
+    lol_blur: "LOLBlur",
+    lol_blur_w64: "LOLBlur width64",
+    all_lol: "All-LOL",
+    sice: "SICE",
+    fivek: "FiveK",
+    sid: "SID",
+    uhd_ll: "UHD-LL",
     mock_checkpoint: "Mock checkpoint",
+    sidd_width32: "SIDD width32",
+    sidd_width64: "SIDD width64",
   };
   return id ? names[id] || id : "-";
 }

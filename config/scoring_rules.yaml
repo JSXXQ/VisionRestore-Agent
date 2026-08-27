@@ -1,28 +1,88 @@
-﻿weights:
+version: "2.2"
+
+# These weights apply only after real model inference. Planning and knowledge
+# scores are intentionally absent from this file.
+weights:
   quality:
-    technical_quality: 0.40
-    no_reference_iqa: 0.30
-    user_match: 0.25
-    runtime_cost: 0.05
+    image_quality: 0.30
+    restoration: 0.40
+    constraint: 0.10
+    stability: 0.20
   balanced:
-    technical_quality: 0.35
-    no_reference_iqa: 0.25
-    user_match: 0.20
-    runtime_cost: 0.20
+    image_quality: 0.30
+    restoration: 0.40
+    constraint: 0.10
+    stability: 0.20
   speed:
-    technical_quality: 0.25
-    no_reference_iqa: 0.15
-    user_match: 0.10
-    runtime_cost: 0.50
+    image_quality: 0.30
+    restoration: 0.40
+    constraint: 0.10
+    stability: 0.20
+
 hard_validity:
   min_mean_luminance: 1
   max_overexposed_ratio: 0.45
   max_color_cast_index: 0.75
   min_structure_keep: 0.35
-runtime_cost:
-  max_runtime_ms: 30000
-  max_peak_memory_mb: 12000
-iqa:
-  enabled: false
-  metrics: [topiq_nr, musiq, clipiqa, niqe, brisque]
-  missing_policy: ignore_metric
+
+image_quality:
+  iqa_blend_weight_complete: 0.70
+  iqa_blend_weight_partial: 0.50
+  iqa_metric_weights:
+    musiq: 0.35
+    clipiqa: 0.25
+    topiq_nr: 0.20
+    niqe: 0.10
+    brisque: 0.10
+  fallback_component_weights:
+    brightness_restoration: 0.25
+    scene_color_naturalness: 0.25
+    highlight_protection: 0.10
+    artifact_control: 0.15
+    effective_sharpness: 0.15
+    structure: 0.10
+
+restoration:
+  brightness_target:
+    minimum: 55
+    ideal: 95
+    maximum: 135
+    overbright_ceiling: 185
+  brightness_fit_weight: 0.70
+  brightness_gain_weight: 0.30
+  detail_quality:
+    low_ratio: 1.0
+    full_score_start_ratio: 8.0
+    full_score_end_ratio: 18.0
+    high_ratio_ceiling: 40.0
+    low_ratio_score_at_one: 0.60
+  component_weights:
+    brightness_recovery: 0.55
+    residual_noise_control: 0.05
+    edge_preservation: 0.15
+    detail_recovery: 0.25
+
+constraint:
+  no_roi_score: 1.0
+
+stability:
+  black_safe_luminance: 65
+  soft_overexposed_ratio: 0.20
+  soft_brightness_max: 135
+  brightness_ceiling: 185
+  color_naturalness:
+    required_iqa_metrics: [musiq, clipiqa]
+    minimum_iqa_value: 0.60
+    fallback_absolute_soft_limit: 0.25
+    change_tolerance: 0.08
+    change_ceiling: 0.35
+    absolute_tolerance: 0.20
+    absolute_ceiling: 0.60
+    change_weight: 0.70
+    absolute_weight: 0.30
+  component_weights:
+    black_output_safety: 0.25
+    overexposure_safety: 0.20
+    scene_color_naturalness: 0.35
+    artifact_stability: 0.10
+    numeric_integrity: 0.10

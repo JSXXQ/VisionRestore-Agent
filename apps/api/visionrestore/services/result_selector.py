@@ -29,7 +29,7 @@ class ResultSelector:
             failed=[self._score_to_dict(item) for item in failed_scores],
             close_competition=close,
             message=message,
-            reason="选择依据为硬性有效性检查、技术质量、IQA占位、用户需求匹配和运行成本的综合结果。",
+            reason="选择依据为真实输出的图像质量、恢复效果、约束满足与稳定性；规划知识和运行成本不参与 final_score。",
         )
 
     @staticmethod
@@ -43,4 +43,5 @@ class ResultSelector:
             "score": score.score,
             "layers": score.layers,
             "reasons": score.reasons,
+            "evidence": score.evidence,
         }

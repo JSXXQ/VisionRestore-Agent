@@ -1,6 +1,12 @@
 from concurrent.futures import ThreadPoolExecutor
+from collections import defaultdict
+from threading import Lock
 from uuid import uuid4
 from visionrestore.agent.enhancement_agent import EnhancementAgent
+from visionrestore.agent.enhancement_agent_v2 import EnhancementAgentV2
+from visionrestore.graph.agent import LangGraphEnhancementAgentV2
+from visionrestore.graph.runtime import WORKFLOW_VERSION
+from visionrestore.schemas.postprocess import PostprocessDecision, PostprocessResult
 from visionrestore.schemas.common import now_iso
 from visionrestore.schemas.task import EnhancementPlan, TaskCreate, TaskRecord
 from visionrestore.storage.database import Database
@@ -11,6 +17,7 @@ class TaskService:
         self.db = Database()
         self.pool = ThreadPoolExecutor(max_workers=1)
         self.cancelled: set[str] = set()
+        self._resume_locks: defaultdict[str, Lock] = defaultdict(Lock)
 
     def create(self, request: TaskCreate) -> TaskRecord:
         file_record = self.db.get_file(request.image_id)
@@ -24,6 +31,7 @@ class TaskService:
             mode=request.mode,
             priority=request.priority,
             analysis_mode=request.analysis_mode,
+            parameters=request.parameters,
             created_at=now_iso(),
             logs=["任务已创建，后台队列已接收。"],
         )
@@ -40,9 +48,40 @@ class TaskService:
                 parameters={**request.parameters, "checkpoint_id": checkpoint},
             )
         ArtifactLineageService().create_task_layout(task.task_id)
+        task.task_mode = str(request.parameters.get("task_mode") or "multi_candidate")
+        requested_engine = str(request.parameters.get("workflow_engine") or "langgraph").lower()
+        if task.task_mode == "single_candidate":
+            task.workflow_engine = "legacy_single"
+        elif requested_engine == "legacy":
+            task.workflow_engine = "legacy_v2"
+        else:
+            task.workflow_engine = "langgraph"
+            task.workflow_thread_id = task.task_id
+            task.workflow_version = WORKFLOW_VERSION
         self.save(task)
-        self.pool.submit(EnhancementAgent().run, task, file_record, self.save)
+        if task.task_mode == "single_candidate":
+            agent = EnhancementAgent()
+        elif task.workflow_engine == "legacy_v2":
+            agent = EnhancementAgentV2()
+        else:
+            agent = LangGraphEnhancementAgentV2(cancel_check=lambda task_id: task_id in self.cancelled)
+        self.pool.submit(agent.run, task, file_record, self.save)
         return task
+
+    def resume_postprocess(self, task_id: str, decision: PostprocessDecision) -> tuple[TaskRecord, PostprocessResult]:
+        with self._resume_locks[task_id]:
+            task = self.get(task_id)
+            if not task:
+                raise ValueError("任务不存在")
+            if task.workflow_engine != "langgraph":
+                raise ValueError("该任务不是可恢复的 LangGraph 工作流")
+            if task.status not in {"awaiting_denoise_confirmation", "awaiting_sr_confirmation"}:
+                raise ValueError(f"任务当前状态 {task.status} 不接受后处理确认")
+            expected_operation = (task.pending_confirmation or {}).get("operation")
+            if expected_operation and decision.operation != expected_operation:
+                raise ValueError(f"任务当前等待 {expected_operation}，不能提交 {decision.operation} 决策")
+            agent = LangGraphEnhancementAgentV2(cancel_check=lambda current_id: current_id in self.cancelled)
+            return agent.resume(task, decision, self.save)
 
     def save(self, task: TaskRecord):
         if task.task_id in self.cancelled and task.status not in {"completed", "failed"}:

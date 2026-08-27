@@ -1,15 +1,25 @@
-weights/
-data/uploads/
-data/outputs/
-data/cache/
-data/reports/
-data/tasks/
+weights/*
+!weights/README.md
+third_party/*
+!third_party/README.md
+
+# Local datasets, user samples, runtime state, evaluation outputs, and engines.
+LOL-v2/
+image_test/
+data/*
+!data/README.md
+
+# Local credentials. Keep only the documented empty template.
 .env
+.env.*
+!.env.example
+
 *.pth
 *.pt
 *.ckpt
 *.onnx
 *.engine
+*.log
 __pycache__/
 .pytest_cache/
 .ruff_cache/

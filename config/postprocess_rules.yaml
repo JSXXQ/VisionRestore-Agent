@@ -8,8 +8,15 @@
   super_resolution:
     short_edge_threshold: 900
     high_resolution_short_edge: 1600
+    detail_recovery_max: 0.55
+    detail_short_edge_max: 1400
     default_scale: 2
     max_default_scale: 2
+    max_output_pixels: 50000000
+    allow_automatic_x4: false
+    require_confirmation: true
+    preferred_model: "realesrgan"
+    default_checkpoint: "realesrgan_x2plus"
   blur:
     sharpness_after_min: 60
   overprocess:

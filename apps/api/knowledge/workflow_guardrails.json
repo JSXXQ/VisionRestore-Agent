@@ -1,0 +1,30 @@
+[
+  {
+    "id": "workflow-v2-multi-candidate",
+    "source": "workflow_guardrails",
+    "title": "V2 multi-candidate workflow",
+    "content": "V2 must plan 1 to 3 independent enhancement candidates, execute each candidate on the same original input image, evaluate each real output, rank by final_score, then diagnose residual degradation before completion.",
+    "tags": ["v2", "candidate", "planning", "final_score"]
+  },
+  {
+    "id": "workflow-planning-score-boundary",
+    "source": "workflow_guardrails",
+    "title": "planning_score is not final_score",
+    "content": "planning_score is only a pre-inference candidate planning signal. It must not be reported or used as final image quality. final_score must come after real model output evaluation.",
+    "tags": ["planning_score", "final_score", "scoring"]
+  },
+  {
+    "id": "workflow-no-serial-enhancement",
+    "source": "workflow_guardrails",
+    "title": "No serial enhancement",
+    "content": "Enhancement candidates must be independent. Do not run Retinexformer output through DarkIR or HVI-CIDNet as a serial enhancement chain in the current V2 workflow. Do not fuse candidate pixels.",
+    "tags": ["candidate", "independent", "no-fusion"]
+  },
+  {
+    "id": "workflow-ai-bounded-advisory",
+    "source": "workflow_guardrails",
+    "title": "Multimodal AI is advisory",
+    "content": "Multimodal AI and retrieved context can only provide bounded semantic hints. They cannot directly select the final model, bypass ModelRegistry, bypass HardwareInspector, override hard quality rejection, or load checkpoints.",
+    "tags": ["multimodal", "rag", "safety", "advisory"]
+  }
+]

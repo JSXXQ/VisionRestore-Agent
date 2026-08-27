@@ -10,6 +10,18 @@ LOCAL_MODELS = CONFIG_DIR / "models.local.yaml"
 ROUTING_RULES = CONFIG_DIR / "routing_rules.yaml"
 SCORING_RULES = CONFIG_DIR / "scoring_rules.yaml"
 POSTPROCESS_RULES = CONFIG_DIR / "postprocess_rules.yaml"
+PLANNING_RULES = CONFIG_DIR / "planning_rules.yaml"
+
+PROJECT_PATH_FIELDS = frozenset(
+    {
+        "background_image_path",
+        "ui_reference_image_path",
+        "source_path",
+        "worker_script",
+        "path",
+        "config_path",
+    }
+)
 
 
 class WeightProfile(BaseModel):
@@ -46,9 +58,29 @@ def _read_yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
+def resolve_project_path(value: str) -> str:
+    """Resolve a project-relative model path without changing absolute paths."""
+    if not value or value.startswith("<"):
+        return value
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return str(path)
+    return str((PROJECT_ROOT / path).resolve())
+
+
+def _resolve_config_paths(value, field_name: str | None = None):
+    if isinstance(value, dict):
+        return {key: _resolve_config_paths(item, key) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_resolve_config_paths(item, field_name) for item in value]
+    if field_name in PROJECT_PATH_FIELDS and isinstance(value, str):
+        return resolve_project_path(value)
+    return value
+
+
 @lru_cache
 def get_model_config() -> dict:
-    return _read_yaml(LOCAL_MODELS)
+    return _resolve_config_paths(_read_yaml(LOCAL_MODELS))
 
 
 @lru_cache
@@ -59,6 +91,11 @@ def get_routing_rules() -> dict:
 @lru_cache
 def get_scoring_rules() -> dict:
     return _read_yaml(SCORING_RULES)
+
+
+@lru_cache
+def get_planning_rules() -> dict:
+    return _read_yaml(PLANNING_RULES)
 
 
 

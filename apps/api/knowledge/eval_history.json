@@ -1,0 +1,16 @@
+[
+  {
+    "id": "eval-lolv2-random30-20260803",
+    "source": "eval_history",
+    "title": "LOLv2 random30 historical result",
+    "content": "Historical LOLv2 30-image validation reported Agent success 30/30, rollback success 3/3, AI adopted 96.67%, V2 rescored score 82.1914 vs fixed Retinexformer LOL-v2-real 80.7928, PSNR 24.4673 vs 22.9311, and SSIM 0.9501 vs 0.9312. Re-run evaluation before citing final paper numbers.",
+    "tags": ["lolv2", "evaluation", "psnr", "ssim", "history"]
+  },
+  {
+    "id": "trt-hvi-cidnet-sice-history",
+    "source": "eval_history",
+    "title": "HVI-CIDNet SICE TensorRT historical result",
+    "content": "HVI-CIDNet/SICE was the first verified TensorRT target. Historical FP32 speed observations: 256x256 PyTorch 25.83 ms vs TensorRT 19.72 ms, 512x512 PyTorch 91.13 ms vs TensorRT 32.97 ms, 768x768 PyTorch 362.43 ms vs TensorRT 79.36 ms.",
+    "tags": ["hvi_cidnet", "sice", "tensorrt", "onnx", "speed"]
+  }
+]

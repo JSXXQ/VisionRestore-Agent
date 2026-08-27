@@ -1,4 +1,5 @@
 ﻿import json
+import os
 import subprocess
 from abc import ABC
 from pathlib import Path
@@ -197,7 +198,21 @@ class ModelAdapter(ABC):
             "--device", run_device,
             "--precision", run_precision,
         ]
-        proc = subprocess.run(cmd, cwd=str(PROJECT_ROOT), text=True, capture_output=True, timeout=int(params.get("timeout_seconds", 240)))
+        process_env = os.environ.copy()
+        local_packages = PROJECT_ROOT / "data" / "python_packages"
+        if local_packages.exists():
+            existing_pythonpath = process_env.get("PYTHONPATH", "")
+            process_env["PYTHONPATH"] = str(local_packages) + (
+                os.pathsep + existing_pythonpath if existing_pythonpath else ""
+            )
+        proc = subprocess.run(
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            text=True,
+            capture_output=True,
+            timeout=int(params.get("timeout_seconds", 240)),
+            env=process_env,
+        )
         lines = [line for line in proc.stdout.splitlines() if line.strip()]
         payload = json.loads(lines[-1]) if lines else {"success": False, "error": proc.stderr.strip()}
         if proc.returncode != 0 or not payload.get("success"):

@@ -3,7 +3,7 @@ import re
 from typing import Any
 
 from visionrestore.core.model_config import get_routing_rules
-from visionrestore.schemas.ai import CHECKPOINTS_BY_MODEL, CheckpointSuggestion, ModelSuggestion, MultimodalAnalysisResult
+from visionrestore.schemas.ai import CHECKPOINTS_BY_MODEL, ModelSuggestion, MultimodalAnalysisResult
 
 DEFAULT_MULTIMODAL_ROUTING = {
     "semantic_bonus_max": 20,
@@ -29,15 +29,13 @@ def validate_multimodal_result(
     validated = result.model_copy(deep=True)
     rules = _multimodal_rules()
     status = {item.get("model_id"): item for item in available_models}
-    existing_weights = _existing_weights_by_model(available_models)
     errors: list[str] = []
     warnings: list[str] = list(validated.warnings or [])
     checks: dict[str, Any] = {
         "json_parse": "passed",
         "pydantic_schema": "passed",
         "model_whitelist": "passed",
-        "checkpoint_whitelist": "passed",
-        "model_checkpoint_combo": "passed",
+        "checkpoint_routing": "local_default_only",
         "local_existence": "passed",
         "health_status": "passed",
         "hardware_resources": "passed",
@@ -59,7 +57,6 @@ def validate_multimodal_result(
         validated.scene = "unknown"
         checks["confidence_thresholds"] = "scene_low"
         warnings.append("Scene confidence is below threshold; scene was set to unknown.")
-        validated.checkpoint_candidates = _default_retinexformer_candidate(validated.checkpoint_candidates)
     checks["adjusted_scene"] = validated.scene
 
     if validated.confidence < rules["minimum_overall_confidence"]:
@@ -83,40 +80,15 @@ def validate_multimodal_result(
             continue
         valid_model_candidates.append(candidate)
 
-    valid_checkpoint_candidates: list[CheckpointSuggestion] = []
-    for candidate in validated.checkpoint_candidates:
-        if candidate.model_id not in CHECKPOINTS_BY_MODEL:
-            errors.append(f"CHECKPOINT_MODEL_NOT_ALLOWED:{candidate.model_id}")
-            checks["checkpoint_whitelist"] = "failed"
-            continue
-        if candidate.checkpoint_id not in CHECKPOINTS_BY_MODEL[candidate.model_id]:
-            errors.append(f"CHECKPOINT_NOT_ALLOWED:{candidate.model_id}:{candidate.checkpoint_id}")
-            checks["checkpoint_whitelist"] = "failed"
-            continue
-        weight = existing_weights.get(candidate.model_id, {}).get(candidate.checkpoint_id)
-        if not weight:
-            errors.append(f"CHECKPOINT_NOT_AVAILABLE:{candidate.model_id}:{candidate.checkpoint_id}")
-            checks["local_existence"] = "failed"
-            continue
-        if weight.get("health_check") == "failed":
-            errors.append(f"CHECKPOINT_HEALTH_FAILED:{candidate.model_id}:{candidate.checkpoint_id}")
-            checks["health_status"] = "failed"
-            continue
-        if weight.get("health_check") == "not_run":
-            checks["health_status"] = "not_run"
-        if _hardware_blocks_model(candidate.model_id, status.get(candidate.model_id, {}), hardware_summary):
-            errors.append(f"CHECKPOINT_HARDWARE_BLOCKED:{candidate.model_id}:{candidate.checkpoint_id}")
-            checks["hardware_resources"] = "failed"
-            continue
-        valid_checkpoint_candidates.append(candidate)
-
     validated.model_candidates = valid_model_candidates
-    validated.checkpoint_candidates = valid_checkpoint_candidates
+    if validated.checkpoint_candidates:
+        warnings.append(
+            "Checkpoint advice was ignored; automatic planning uses the local config-driven CheckpointSelector inside each model family."
+        )
+    validated.checkpoint_candidates = []
 
     if not valid_model_candidates:
         errors.append("NO_VALID_MODEL_CANDIDATE")
-    if not valid_checkpoint_candidates:
-        errors.append("NO_VALID_CHECKPOINT_CANDIDATE")
 
     if manual_model or manual_checkpoint:
         validated.adopted = False
@@ -163,32 +135,6 @@ def mark_invalid_response(
 def _multimodal_rules() -> dict[str, float]:
     configured = deepcopy(get_routing_rules().get("multimodal_routing", {}) or {})
     return DEFAULT_MULTIMODAL_ROUTING | configured
-
-
-def _existing_weights_by_model(models: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, Any]]]:
-    out: dict[str, dict[str, dict[str, Any]]] = {}
-    for model in models:
-        model_id = model.get("model_id")
-        out[model_id] = {}
-        for weight in model.get("capabilities", {}).get("weights", []) or []:
-            if weight.get("status") == "found" and weight.get("exists", True):
-                out[model_id][weight.get("checkpoint_id")] = weight
-    return out
-
-
-def _default_retinexformer_candidate(candidates: list[CheckpointSuggestion]) -> list[CheckpointSuggestion]:
-    safe = [
-        item for item in candidates
-        if not (item.model_id == "retinexformer" and item.checkpoint_id in {"sdsd_indoor", "sdsd_outdoor"})
-    ]
-    if not any(item.model_id == "retinexformer" and item.checkpoint_id == "lol_v2_real" for item in safe):
-        safe.insert(0, CheckpointSuggestion(
-            model_id="retinexformer",
-            checkpoint_id="lol_v2_real",
-            score=0,
-            reason="Default Retinexformer candidate when scene confidence is low.",
-        ))
-    return safe
 
 
 def _hardware_blocks_model(model_id: str, model_status: dict[str, Any], hardware: dict[str, Any]) -> bool:

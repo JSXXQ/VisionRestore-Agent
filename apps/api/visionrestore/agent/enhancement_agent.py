@@ -197,6 +197,7 @@ class EnhancementAgent:
         analysis_mode: str,
         manual_model: str | None,
         manual_checkpoint: str | None,
+        knowledge_context: list[dict] | None = None,
     ) -> MultimodalAnalysisResult:
         settings = get_settings()
         provider = ProviderRegistry().get()
@@ -229,9 +230,14 @@ class EnhancementAgent:
                 analysis_mode=analysis_mode,
                 manual_model=manual_model,
                 manual_checkpoint=manual_checkpoint,
+                knowledge_context=knowledge_context,
             )
         except AIProviderError as exc:
-            if image_preview is not None and is_image_input_unsupported_error(exc):
+            retry_without_image = image_preview is not None and (
+                is_image_input_unsupported_error(exc)
+                or exc.code in {"AI_PROVIDER_TIMEOUT", "AI_PROVIDER_UNAVAILABLE"}
+            )
+            if retry_without_image:
                 try:
                     result = self._validated_provider_analysis(
                         provider=provider,
@@ -243,15 +249,18 @@ class EnhancementAgent:
                         analysis_mode="text_only",
                         manual_model=manual_model,
                         manual_checkpoint=manual_checkpoint,
+                        knowledge_context=knowledge_context,
                     )
                     result.warnings = [
-                        "当前配置的模型不支持图像输入，已自动改用文字/本地指标 AI 分析。",
+                        "图像多模态调用失败，已自动改用文字/本地指标 AI 分析。",
+                        f"原始多模态错误：{exc.message}",
                         *list(result.warnings or []),
                     ]
                     result.local_validation = {
                         **result.local_validation,
                         "image_mode_retry": "downgraded_to_text_only",
                         "image_mode_failure": exc.code,
+                        "image_mode_failure_message": exc.message[:300],
                     }
                     return result
                 except AIProviderError as retry_exc:
@@ -285,6 +294,7 @@ class EnhancementAgent:
         analysis_mode: str,
         manual_model: str | None,
         manual_checkpoint: str | None,
+        knowledge_context: list[dict] | None = None,
     ) -> MultimodalAnalysisResult:
         result = provider.analyze(
             image_preview=image_preview,
@@ -293,6 +303,7 @@ class EnhancementAgent:
             available_models=available_models,
             hardware_summary=hardware_summary,
             analysis_mode=analysis_mode,
+            knowledge_context=knowledge_context,
         )
         return validate_multimodal_result(
             result,

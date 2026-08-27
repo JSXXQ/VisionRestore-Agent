@@ -1,4 +1,4 @@
-﻿from types import SimpleNamespace
+from types import SimpleNamespace
 
 from visionrestore.services.residual_analyzer import ResidualDegradationAnalyzer
 
@@ -20,7 +20,7 @@ def test_residual_analyzer_recommends_denoise_for_noisy_result():
         hardware={"gpu_memory_mb": 8192},
     )
     assert result.denoise_recommended is True
-    assert result.preferred_denoiser == "lpdm"
+    assert result.preferred_denoiser == "nafnet"
     assert result.denoise_reason
     assert result.super_resolution_recommended is True
 
@@ -60,3 +60,24 @@ def test_residual_analyzer_honors_user_sr_request():
     assert result.super_resolution_recommended is False or result.sr_confidence > 0
     assert "用户明确表达放大或超分需求" in result.sr_reason
     assert result.preferred_scale == 2
+
+
+def test_residual_analyzer_uses_final_score_detail_evidence_for_sr_routing():
+    result = ResidualDegradationAnalyzer().analyze(
+        original_analysis=_analysis(width=1500, height=1000, noise=4),
+        enhanced_metrics={
+            "noise_estimate_before": 4,
+            "noise_estimate_after": 5,
+            "width": 1500,
+            "height": 1000,
+            "score_evidence": {
+                "restoration": {"components": {"detail_recovery": 0.42}}
+            },
+        },
+        best_candidate={"model_id": "retinexformer"},
+        user_intent=_intent(),
+        hardware={},
+    )
+
+    assert result.super_resolution_recommended is True
+    assert any("细节恢复" in reason for reason in result.sr_reason)

@@ -8,7 +8,7 @@
 - SCI：easy、medium、difficult。
 - Zero-DCE：Epoch99，作为经典轻量基线和最后兜底；上游 README 标明非商业/学术研究用途。
 
-模型源码和权重路径保存在 `config/models.local.yaml`，该文件已加入 `.gitignore`。示例文件为 `config/models.example.yaml`。
+模型源码统一放在 `third_party/<model>/`，运行时权重统一通过 `weights/<model>/` 引用。`config/models.local.yaml` 使用项目相对路径并已加入 `.gitignore`，便携示例为 `config/models.example.yaml`。完整约定见 `docs/model_file_layout.md`。
 
 ## 已验证真实推理
 
@@ -34,7 +34,7 @@ Agent 包含 ImageAnalyzer、IntentParser、HardwareInspector、ModelRegistry、
 ## Windows 启动
 
 ```powershell
-cd E:\codex_project\VisionRestore-Agent
+Set-Location -LiteralPath "<VisionRestore-Agent 项目目录>"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1
 ```
 
@@ -53,6 +53,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1
 ```
 
 ## 模型验证
+
+首次整理或恢复本地模型文件时运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/standardize_model_layout.ps1
+```
+
+然后执行注册与真实小图健康检查：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate_models.ps1

@@ -1,5 +1,96 @@
 # Development Log
 
+## 2026-08-24 - Scene-aware color scoring and proportional result previews
+
+- Corrected a model-agnostic FinalScore failure where global RGB channel
+  imbalance treated naturally dominant scene colors as an artificial cast.
+- Scene-adaptive color handling is enabled only when MUSIQ and CLIP-IQA are both
+  available and each reaches the configured quality threshold; otherwise the
+  validated conservative absolute-color fallback remains active.
+- Kept all model names, PlanningScore, LLMScore, runtime, and hardware outside
+  FinalScore. Severe color casts remain a hard-validity failure.
+- For the reproduced `r0e04cc91t.png` case, DarkIR changed from 80.78/second to
+  86.45/first; paired GT verification was 35.2452 dB PSNR and 0.958061 SSIM,
+  versus Retinexformer at 16.3884 dB and 0.792665.
+- Historical 100-output offline rescoring retained the validated aggregate:
+  +0.510261 dB PSNR and +0.027875 SSIM versus fixed Retinexformer.
+- Changed upload, comparison, and candidate images from crop-fill to proportional
+  contain rendering. Full pytest passed 101/101 and the frontend production
+  bundle completed in an isolated validation output directory.
+
+## 2026-08-24 - Model-agnostic FinalScore correction and real fixed-30 validation
+
+- Replaced the overly smooth-output preference in the local IQA fallback with
+  configured target brightness, absolute color-cast, effective-detail,
+  structure, artifact, and highlight evidence.
+- Kept FinalScore independent of LocalScore, LLMScore, Knowledge, model name,
+  runtime, and hardware. No HVI-CIDNet penalty or DarkIR bonus was introduced.
+- Fixed failed/unavailable denoise handling so LangGraph keeps the previous best
+  result and advances instead of re-entering the same confirmation loop.
+- Added a project-local `einops 0.6.1` fallback for isolated model processes and
+  declared the dependency in `pyproject.toml`.
+- Real fixed-30 LOLv2 run: 30/30 Agent tasks and 30/30 baselines succeeded;
+  selected Retinexformer 21, DarkIR 8, HVI-CIDNet 1. Against fixed
+  Retinexformer, PSNR improved by 0.816071 dB and SSIM by 0.013658; both 95%
+  confidence intervals were above zero. DarkIR's eight selected samples averaged
+  +3.070321 dB PSNR and +0.057880 SSIM.
+- One close-score false positive remains and is reported as no-reference
+  uncertainty rather than hidden with a model-specific rule.
+
+## 2026-08-23 - Simplified Local/LLM 50-50 planning and calibrated FinalScore
+
+- Simplified active candidate planning to three score concepts: LocalScore, LLMScore, and post-inference FinalScore.
+- Active planning now uses `0.5 * local_score + 0.5 * llm_score` when validated external scoring is available and LocalScore-only fallback otherwise.
+- Repositioned allowlisted model-role Knowledge as the LLM capability reference instead of an independent KnowledgeAdjustment.
+- Converted hardware/model readiness to gates and automatic checkpoint selection to each family default healthy checkpoint.
+- Updated the multimodal prompt to score every available model family from 0-100 and return no checkpoint choice.
+- Calibrated FinalScore with target-aware brightness recovery, hybrid IQA/local perceptual scoring, and stronger underexposure/structure safeguards.
+- Offline rescoring of 100 stored real candidate outputs improved the selector to +0.324001 dB PSNR and +0.022668 SSIM over fixed Retinexformer, with FinalScore/reference false positives reduced from 20 to 8. Ground truth remains offline evaluation only.
+
+## 2026-08-23 - V2.2 decision-quality optimization
+
+- Preserved the single-Agent LangGraph architecture, typed state, tools, ModelRegistry, local knowledge boundary, SQLite checkpointing, and existing model algorithms/weights.
+- Added `config/planning_rules.yaml` and changed active planning to `ModelPriorScore + InputMatchScore + KnowledgeAdjustment + HardwareAdjustment`.
+- Added per-signal planning evidence from illumination, noise, blur, color shift, detail loss, resolution pressure, user constraints, semantic advice, and hardware observations.
+- Kept allowlisted knowledge provenance and `[-5,+5]` bound; knowledge still cannot add candidates and never enters final quality scoring.
+- Replaced the old overlapping final layers with image quality, restoration, constraint, and stability layers; planning, knowledge, runtime, and memory are explicitly excluded from `final_score`.
+- Kept the existing `CandidateEvaluator -> CandidateRanker -> ResultSelector` authority chain.
+- Kept the LangGraph postprocess subgraph and interrupt/resume mechanism, while making denoise-to-SR routing conditional on the residual recommendation.
+- Unified denoise and Real-ESRGAN re-evaluation with `CandidateEvaluator`; any score decrease or hard validity failure rolls back to the prior best artifact.
+- Added scaled-output support for SR quality/ROI evaluation without changing Real-ESRGAN inference behavior.
+
+## 2026-08-23 - Completed Real-ESRGAN checkpoint inventory
+
+- Moved `realesr-general-x4v3.pth` from the temporary `超分/` staging directory to `third_party/realesrgan/pre_weight/`.
+- Created the canonical runtime hard link at `weights/realesrgan/realesr_general_x4v3.pth`.
+- Preserved additional ESRGAN and RealESRNet assets under the third-party weight inventory without exposing them to automatic Agent routing.
+- Removed three staging duplicates only after their SHA-256 hashes matched the canonical x2, x4, and anime files.
+- Regenerated the local weight manifest: 26 ready checkpoints and 0 missing checkpoints.
+- Added a project-local BasicSR 1.4.2 runtime fallback for the configured read-only Conda environment and its broken Unicode user-site path.
+- Verified `realesr_general_x4v3` with real CUDA fp16 inference: 16x16 input to 64x64 output, SRVGGNetCompact, native 4x scale.
+
+## 2026-08-23 - Standardized model source and weight layout
+
+- Moved local third-party source trees from nested `master/<archive>/<repo>` paths to canonical `third_party/<model>/` directories.
+- Added canonical `weights/<model>/` runtime checkpoint directories.
+- Used same-volume hard links so large LPDM, NAFNet, MambaIR, and Real-ESRGAN checkpoints are not duplicated.
+- Converted `config/models.local.yaml` to project-relative source, worker, checkpoint, and model-config paths.
+- Added project-relative path resolution in `visionrestore.core.model_config` while preserving absolute external Python paths.
+- Added `scripts/standardize_model_layout.ps1`, local manifest generation, layout documentation, and a relative-path regression test.
+- Updated the launcher, smoke test, README, third-party notices, Real-ESRGAN docs, and portable model config example to remove stale `master/` and old project-root references.
+- Registry and real small-image health checks passed for every configured available model. The later checkpoint inventory update installed the optional `realesr_general_x4v3` asset as well.
+
+## 2026-08-22 - Lightweight knowledge-augmented planning
+
+- Connected the existing allowlisted local retrieval node to `CandidatePlanner` through a deterministic `PlanningKnowledgeAdapter`.
+- Added retrieval provenance fields: `item_id` and `matched_terms`.
+- Added candidate planning fields: `knowledge_adjustment` and structured `knowledge_evidence`.
+- Historical V2.1 formula was `local_score + knowledge_adjustment + ai_semantic_bonus + hardware_adjustment`; superseded by the V2.2 layered formula documented above.
+- Limited knowledge adjustment to `[-5, +5]` and preserved manual-choice priority.
+- Restricted score-changing knowledge to model-specific `model_roles` and `eval_history`; workflow and postprocess context remain trace/report-only.
+- Preserved ModelRegistry, checkpoint, auto-route, hardware, original-input-only, ROI, post-inference ranking, and rollback boundaries.
+- Added graph event/report observability and regression tests for identity-only matches, source boundaries, score composition, provenance, and adjustment capping.
+
 ## 2026-07-31 Audit Snapshot
 
 Backup before this audit:
@@ -329,3 +420,73 @@ Known gaps:
 - Added docs for multi-candidate planning, candidate scoring, postprocess workflow, model environment isolation, artifact lineage, and model download/check workflow.
 - Updated API documentation with the implemented `/api/v2` foundation endpoints.
 - Documentation explicitly marks unavailable worker models and incomplete execution phases to avoid presenting placeholders as finished real model integration.
+
+## 2026-08-01 - V2 Multi-Candidate Main Flow
+
+- Documented the old `/api/v2/tasks` call chain and the new active V2 chain in `docs/current_v2_call_chain.md`.
+- Added `EnhancementAgentV2` and switched default V2 tasks to the multi-candidate pipeline.
+- Kept `EnhancementAgent` as `parameters.task_mode = "single_candidate"` compatibility mode.
+- Updated `CandidatePlanner` so automatic V2 enhancement candidates are Retinexformer, DarkIR, HVI-CIDNet, FLOL, and SCI.
+- Kept NAFNet as postprocess/manual-only and excluded it from automatic enhancement planning.
+- Updated `MultiCandidateExecutor` so every candidate reads the original input and writes inside the task candidate directory.
+- Registered real candidate outputs for API file serving.
+- Separated planning score from final result score.
+- Routed real outputs through `ResultSelector`, `CandidateEvaluator`, and `CandidateRanker` before selecting the best result.
+- Added residual degradation diagnosis before completion.
+- Updated postprocess default to LPDM and added re-score plus automatic rollback on worse denoise output.
+- Updated the UI to show V2 candidate planning, candidate result scoring, and LPDM/NAFNet manual postprocess actions.
+- Validation: backend pytest passed; frontend build passed.
+
+## 2026-08-02 17:45 Real-ESRGAN / IQA increment
+
+Added Real-ESRGAN formal SR postprocess registration, worker, status API, SR confirm/skip API, SR re-score/rollback logic, PyIQA status/query service, executor IQA fallback, and frontend readiness display. Current blockers: `realesrgan`, `basicsr`, and `pyiqa` are not installed in the pytorch env; `realesr-general-x4v3.pth` is missing.
+
+## 2026-08-02 19:24 Dependency install
+
+Installed `basicsr`, `realesrgan`, and `pyiqa` into the configured pytorch environment. Added worker compatibility shims for newer torchvision and missing local `realesrgan.version`. Real-ESRGAN x2 CUDA fp16 health check passed; PyIQA status is ready.
+
+## 2026-08-02 IQA scope adjustment
+
+Default IQA execution was narrowed to MUSIQ and CLIP-IQA. TOPIQ-NR, NIQE, and BRISQUE remain documented as disabled metrics for the current environment and no longer create repeated task-time errors.
+# 2026-08-07 - Local context retrieval and prompt registry
+
+- Added an allowlisted local knowledge base under `apps/api/knowledge`.
+- Added `ContextRetrievalService` for bounded local context retrieval.
+- Added `TaskRecord.retrieved_context` so V2 tasks can record retrieved context.
+- Added report output for retrieved local context.
+- Added prompt metadata helpers with SHA-256 hashes in `visionrestore.ai.prompts`.
+- Kept retrieved context local-only by default; it is not sent to external multimodal providers.
+- Added tests for context retrieval and safe prompt-context policy.
+
+# 2026-08-08 - Region constraint monitor
+
+- Added `RegionConstraint` schemas for object/ROI constraints such as protecting a streetlight from overexposure.
+- Added `RegionConstraintService` to accept explicit bbox constraints, consume validated multimodal region constraints, and fall back to local bright-region detection when the user explicitly asks to protect a light source.
+- `MultiCandidateExecutor` now records ROI overexposure and luminance checks for each real candidate output.
+- `CandidateEvaluator` rejects hard ROI failures; the historical soft user-match contribution is now represented by the V2.2 `ConstraintScore` layer.
+- `EnhancementAgentV2` now records `task.region_constraints` and performs one bounded quality retry from the original input when the first pass ran a small candidate set and all completed outputs violate hard region constraints.
+- Updated multimodal prompt schema so region bounding boxes are advisory only and never direct pixel-edit authority.
+- Updated the web UI so users can drag-select ROI constraints on the input image, send those constraints through task parameters, view overlays on original/result images, and inspect ROI pass/fail status in the Agent panel and candidate cards.
+
+# 2026-08-20 - LangGraph V2.1 standardization
+
+- Added a typed LangGraph state, explicit main graph, candidate execution subgraph, and interruptible postprocess subgraph.
+- Made LangGraph the default V2 multi-candidate orchestrator while preserving legacy single-candidate and legacy V2 rollback paths.
+- Added persistent SQLite checkpoints keyed by task ID.
+- Added typed tool definitions, schemas, registry, router, normalized tool results, and tool timing metadata.
+- Implemented candidate `Send` fan-out with reducers that only merge candidate results, workflow events, and messages.
+- Preserved original-input-only execution, planning-score/final-score separation, local final authority, bounded ROI retry, user confirmation, re-score, and rollback.
+- Added structured workflow events, graph run records, TaskRecord messages, pending confirmation state, and a read-only workflow observation endpoint.
+- Routed postprocess decisions through `Command(resume=...)` for LangGraph tasks and added per-task resume locking and operation validation.
+- Added graph integration tests for fan-out, reducer behavior, original input invariants, interrupt/resume idempotency, and tool schema validation.
+- Updated stale LPDM tests to the active NAFNet recommendation and LPDM runtime-safety policy.
+- Detailed design and migration notes are in `docs/langgraph_refactor_report.md`.
+
+# 2026-08-24 - Config-driven family-internal checkpoint selection
+
+- Added `CheckpointSelector` after model-family planning without changing the LangGraph topology.
+- Every selected enhancement family now ranks its own healthy checkpoints from `config/planning_rules.yaml` instead of always loading the default weight.
+- Internal matching uses ImageAnalyzer degradation signals, user intent/priority, validated scene evidence, and hardware gates.
+- Added `checkpoint_score`, selection mode, ranked family checkpoints, and explainable evidence to candidate planning records and the frontend candidate card.
+- Preserved LocalScore/LLMScore 50/50 family planning, direct LLM checkpoint prohibition, manual override priority, original-input-only execution, and FinalScore isolation.
+- Reused the selector for the two multi-checkpoint postprocess families: NAFNet and Real-ESRGAN. Scale compatibility is a hard gate for Real-ESRGAN; Zero-DCE and LPDM remain single-checkpoint families.

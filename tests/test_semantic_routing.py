@@ -69,3 +69,60 @@ def test_adopted_multimodal_analysis_adds_limited_route_score():
     assert any("多模态语义建议" in reason for reason in sci["reasons"])
     assert route.checkpoint_candidates[0]["checkpoint_id"] == "ntire"
     assert route.checkpoint_candidates[0]["score"] == 110
+
+
+def test_new_installed_models_participate_in_main_routing():
+    intent = UserIntent(priority="balanced", scene="unknown", preferences=UserPreferences(reduce_noise=True, preserve_color=True))
+    analysis = SimpleNamespace(
+        mean_luminance=28,
+        median_luminance=24,
+        luminance_p25=18,
+        dark_pixel_ratio=0.72,
+        dynamic_range=58,
+        noise_estimate=18,
+        laplacian_sharpness=45,
+        color_cast_index=0.18,
+        width=1920,
+        height=1080,
+    )
+    models = _models() + [
+        {
+            "model_id": "darkir",
+            "available": True,
+            "supported_devices": ["cuda"],
+            "capabilities": {"weights": [
+                {"checkpoint_id": "real_lsrw", "exists": True, "status": "found", "display_name": "DarkIR real-LSRW"},
+                {"checkpoint_id": "lol_blur", "exists": True, "status": "found", "display_name": "DarkIR LOLBlur"},
+            ]},
+        },
+        {
+            "model_id": "hvi_cidnet",
+            "available": True,
+            "supported_devices": ["cuda"],
+            "capabilities": {"weights": [
+                {"checkpoint_id": "sice", "exists": True, "status": "found", "display_name": "HVI-CIDNet SICE"},
+                {"checkpoint_id": "fivek", "exists": True, "status": "found", "display_name": "HVI-CIDNet FiveK"},
+            ]},
+        },
+        {
+            "model_id": "flol",
+            "available": True,
+            "supported_devices": ["cuda"],
+            "capabilities": {"weights": [
+                {"checkpoint_id": "lol_v2_real", "exists": True, "status": "found", "display_name": "FLOL LOLv2-Real"},
+            ]},
+        },
+    ]
+
+    route = HierarchicalRouter().route(
+        intent=intent,
+        analysis=analysis,
+        hardware={"cuda_available": True, "gpu_memory_mb": 8192},
+        model_statuses=models,
+        mode="auto",
+    )
+
+    ids = [item["model_id"] for item in route.model_candidates[:4]]
+    assert "darkir" in ids
+    assert "hvi_cidnet" in ids
+    assert route.selected_model in {"darkir", "hvi_cidnet"}
