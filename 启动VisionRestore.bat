@@ -37,13 +37,13 @@ if "%ERRORLEVEL%"=="10" (
 )
 
 if "%ERRORLEVEL%"=="11" (
-  echo [WARN] Port 8000 or 5173 is already occupied.
-  echo If the page cannot open, close the old terminal/process first, then run this bat again.
-  goto OPEN_WEB
+  echo [WARN] A previous startup is incomplete. Cleaning known VisionRestore processes...
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\scripts\stop.ps1"
 )
 
+:START_SERVICES
 echo [START] Starting backend and frontend...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\scripts\start.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\scripts\start.ps1"
 
 if errorlevel 1 (
   echo.
@@ -51,7 +51,8 @@ if errorlevel 1 (
   echo Common reasons:
   echo - Port 8000 or 5173 is occupied
   echo - config\models.local.yaml is missing
-  echo - .venv or npm dependencies are incomplete
+  echo - .venv, Node.js, or frontend dependencies are incomplete
+  echo Logs: %PROJECT_DIR%\.task-pids
   echo.
   pause
   exit /b 1
